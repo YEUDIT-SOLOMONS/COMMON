@@ -61,9 +61,16 @@ try
     // החיבור נוצר באופן עצל (רק כשמגיעה בקשת API ראשונה שזקוקה לו) ולא כאן בעליית האפליקציה -
     // כדי שבעיית התחברות ל-Firebase לא תפיל את כל השרת (מה שמונע מ-Swagger לעלות בכלל),
     // אלא תוצג כתשובת שגיאה מפורטת וברורה בבקשה עצמה (דרך ה-Middleware הגלובלי), הניתנת לצפייה בדפדפן.
-    builder.Services.AddSingleton(_ => useEmulator
-        ? new FirebaseDbContext(firebaseProjectId, new Uri(firebaseEmulatorHost!.StartsWith("http") ? firebaseEmulatorHost : $"http://{firebaseEmulatorHost}"))
-        : new FirebaseDbContext(firebaseProjectId, firebaseCredentialsPath!));
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddSingleton(sp =>
+    {
+        var db = useEmulator
+            ? new FirebaseDbContext(firebaseProjectId, new Uri(firebaseEmulatorHost!.StartsWith("http") ? firebaseEmulatorHost : $"http://{firebaseEmulatorHost}"))
+            : new FirebaseDbContext(firebaseProjectId, firebaseCredentialsPath!);
+        var accessor = sp.GetRequiredService<IHttpContextAccessor>();
+        db.AmbientCancellation = () => accessor.HttpContext?.RequestAborted ?? CancellationToken.None;
+        return db;
+    });
 
     // הצפנת מספרי חשבון הבנק של המשכירים במסד הנתונים (חוק הגנת הפרטיות / תקנות אבטחת מידע) -
     // ר' הערה מפורטת ב-FieldEncryptor. המפתח מגיע ממשתנה הסביבה Encryption__PayoutKey (ב-Cloud Run)

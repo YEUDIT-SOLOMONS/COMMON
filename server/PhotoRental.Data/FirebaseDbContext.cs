@@ -18,6 +18,10 @@ public class FirebaseDbContext
     private static readonly string[] FirestoreScopes = { "https://www.googleapis.com/auth/datastore" };
 
     private readonly HttpClient _http;
+
+    // ה-CancellationToken של הבקשה הנוכחית (HttpContext.RequestAborted). קריאה שלא קיבלה token מפורש משתמשת בו,
+    // כך שביטול בקשה עוצר גם את הפנייה ל-Firestore בכל ה-endpoints
+    public Func<CancellationToken>? AmbientCancellation { get; set; }
     private readonly GoogleCredential? _credential;
     private readonly string _documentsBasePath;
 
@@ -440,6 +444,8 @@ public class FirebaseDbContext
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string relativeUrl, JsonNode? jsonBody = null, CancellationToken ct = default)
     {
+        if (!ct.CanBeCanceled && AmbientCancellation is not null)
+            ct = AmbientCancellation();
         var request = new HttpRequestMessage(method, relativeUrl)
         {
             // כפיית HTTP/1.1 באופן מפורש לכל בקשה - זו הסיבה המרכזית למעבר מ-gRPC ל-REST:
