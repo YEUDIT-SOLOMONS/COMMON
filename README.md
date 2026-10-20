@@ -28,8 +28,6 @@ PhotoRental/
 │   ├── deploy/                 סקריפטים לפריסה מ-Google Cloud Shell ו-Cloud Scheduler
 │   ├── Dockerfile              בניית תמונת השרת ל-Cloud Run
 │   └── PhotoRental.sln
-│
-└── marketing/              חומרי שיווק, מודעות ודף לוקיישנים
 ```
 
 ## טכנולוגיות ושירותים

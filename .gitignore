@@ -34,3 +34,6 @@ Thumbs.db
 # ===== קבצים פרטיים שאינם חלק מהפרויקט =====
 _private/
 marketing/gif-frames/_profile/
+
+# חומרי שיווק - נשמרים במחשב בלבד
+marketing/
