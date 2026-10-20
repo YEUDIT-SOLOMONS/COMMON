@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PhotoRental.Core.Helpers;
 using PhotoRental.Core.Interfaces;
 
 namespace PhotoRental.API.Controllers;
@@ -11,9 +10,9 @@ namespace PhotoRental.API.Controllers;
 [AllowAnonymous]
 public class VisitsController : ControllerBase
 {
-    private readonly IVisitRepository _visits;
+    private readonly IVisitService _visits;
 
-    public VisitsController(IVisitRepository visits)
+    public VisitsController(IVisitService visits)
     {
         _visits = visits;
     }
@@ -26,11 +25,7 @@ public class VisitsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Record([FromBody] VisitBody? body)
     {
-        var ua = Request.Headers.UserAgent.ToString().ToLowerInvariant();
-        if (ua.Contains("bot") || ua.Contains("crawler") || ua.Contains("spider") || ua.Contains("facebookexternalhit") || ua.Contains("whatsapp"))
-            return NoContent();
-
-        try { await _visits.RecordAsync(IsraelTime.Now.ToString("yyyy-MM-dd"), body?.IsNew ?? false); } catch { }
+        await _visits.RecordAsync(body?.IsNew ?? false, Request.Headers.UserAgent.ToString());
         return NoContent();
     }
 }

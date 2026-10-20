@@ -11,49 +11,20 @@ namespace PhotoRental.API.Controllers;
 [AllowAnonymous]
 public class ImagesController : ControllerBase
 {
-    private readonly IItemRepository _items;
+    private readonly IItemMediaService _media;
 
-    public ImagesController(IItemRepository items)
+    public ImagesController(IItemMediaService media)
     {
-        _items = items;
+        _media = media;
     }
 
     [HttpGet("{itemId}/{slot}")]
     public async Task<IActionResult> Get([FromRoute] string itemId, [FromRoute] string slot)
     {
-        var item = await _items.GetByIdAsync(itemId);
-        if (item is null || item.DeletedAtUtc is not null || string.IsNullOrEmpty(item.ImageDataUrl))
+        var image = await _media.GetImageAsync(itemId, slot);
+        if (image is null)
             return NotFound();
-
-        var all = new[] { item.ImageDataUrl }.Concat(item.ExtraImageDataUrls).ToList();
-        string? dataUrl = slot == "thumb" ? all[0] : int.TryParse(slot, out var i) && i >= 0 && i < all.Count ? all[i] : null;
-        if (dataUrl is null || !TryDecode(dataUrl, out var bytes, out var mime))
-            return NotFound();
-
         Response.Headers.CacheControl = "public, max-age=31536000, s-maxage=31536000, immutable";
-
-        return File(bytes, mime);
-    }
-
-    private static bool TryDecode(string dataUrl, out byte[] bytes, out string mime)
-    {
-        bytes = Array.Empty<byte>();
-        mime = "image/jpeg";
-        if (!dataUrl.StartsWith("data:", StringComparison.Ordinal))
-            return false;
-        var comma = dataUrl.IndexOf(',');
-        if (comma < 0)
-            return false;
-        var type = dataUrl[5..comma].Split(';')[0];
-        if (!string.IsNullOrEmpty(type)) mime = type;
-        try
-        {
-            bytes = Convert.FromBase64String(dataUrl[(comma + 1)..]);
-            return true;
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
+        return File(image.Bytes, image.Mime);
     }
 }

@@ -7,19 +7,8 @@ using PhotoRental.Core.Helpers;
 using PhotoRental.Core.Interfaces;
 using PhotoRental.Core.Options;
 
-public class SaleCreateDto
-{
-    public string ItemId { get; set; } = string.Empty;
-    public string DeliveryMethod { get; set; } = "SelfPickup";
-    public DeliveryAddressDto? DeliveryAddress { get; set; }
-    public string PaymentMethod { get; set; } = "CreditCard";
-    public string? PaymentTransactionId { get; set; }
-    public string? PaymentProofDataUrl { get; set; }
-    public string? PaymentProofFileName { get; set; }
-}
-
 // מכירות יד 2: תשלום דרך האתר, 5% עמלה מהמוכרת, העברה למוכרת אחרי שהקונה אישרה קבלה (או אוטומטית אחרי 3 ימים)
-public class SaleService
+public class SaleService : ISaleService
 {
     public const decimal CommissionRate = 0.05m;
     public static readonly TimeSpan ConfirmWindow = TimeSpan.FromDays(3);
@@ -58,7 +47,13 @@ public class SaleService
     public async Task<decimal> QuoteAsync(string itemId, DeliveryAddressDto address) =>
         await _loans.GetSaleDeliveryFeeAsync(await SaleItemAsync(itemId), address);
 
-    public async Task<Sale> CreateAsync(string buyerId, SaleCreateDto dto)
+    public async Task<SaleCreatedDto> CreateAsync(string buyerId, SaleCreateDto dto)
+    {
+        var sale = await CreateSaleAsync(buyerId, dto);
+        return new SaleCreatedDto { Id = sale.Id, Token = sale.BuyerToken };
+    }
+
+    private async Task<Sale> CreateSaleAsync(string buyerId, SaleCreateDto dto)
     {
         var method = dto.PaymentMethod is "Cash" or "BankTransfer" ? dto.PaymentMethod : "CreditCard";
         var card = method == "CreditCard";
@@ -157,7 +152,7 @@ public class SaleService
         return sale;
     }
 
-    public async Task<(Sale Sale, string Role)?> ResolveAsync(string id, string? token, string? userId)
+    private async Task<(Sale Sale, string Role)?> ResolveAsync(string id, string? token, string? userId)
     {
         var sale = await _sales.GetByIdAsync(id);
         if (sale is null)
@@ -169,7 +164,7 @@ public class SaleService
         return null;
     }
 
-    public async Task<object> ViewAsync(Sale sale, string role)
+    private async Task<object> ViewAsync(Sale sale, string role)
     {
         var item = await _items.GetByIdAsync(sale.ItemId);
         var other = await _users.GetByIdAsync(role == "Buyer" ? sale.SellerId : sale.BuyerId);
@@ -203,7 +198,7 @@ public class SaleService
         };
     }
 
-    public async Task ConfirmReceivedAsync(Sale sale, bool auto = false)
+    private async Task ConfirmReceivedAsync(Sale sale, bool auto = false)
     {
         if (sale.Status != "Paid")
             return;
@@ -226,7 +221,7 @@ public class SaleService
     }
 
     // המוכרת מסמנת אם מסרה את הפריט. "עוד לא נמסר" עוצר את האישור האוטומטי ומעדכן את הנהלת האתר
-    public async Task MarkHandedAsync(Sale sale, bool handed)
+    private async Task MarkHandedAsync(Sale sale, bool handed)
     {
         if (handed)
         {
@@ -248,7 +243,7 @@ public class SaleService
         }
     }
 
-    public async Task ReportProblemAsync(Sale sale, string text)
+    private async Task ReportProblemAsync(Sale sale, string text)
     {
         if (sale.Status != "Paid")
             throw new InvalidOperationException("כבר אישרת קבלה של הפריט");
@@ -326,7 +321,70 @@ public class SaleService
         }
     }
 
-    public Task<IReadOnlyList<Sale>> GetAllAsync() => _sales.GetAllAsync();
+    public async Task<object?> GetViewAsync(string id, string? token, string? userId)
+    {
+        var found = await ResolveAsync(id, token, userId);
+        return found is null ? null : await ViewAsync(found.Value.Sale, found.Value.Role);
+    }
+
+    public async Task<object> ConfirmReceivedAsync(string id, string? token, string? userId)
+    {
+        var sale = await ResolveForAsync(id, token, userId, "Buyer", "הרכישה לא נמצאה");
+        await ConfirmReceivedAsync(sale);
+        return await ViewAsync(sale, "Buyer");
+    }
+
+    public async Task<object> MarkHandedAsync(string id, string? token, string? userId, bool delivered)
+    {
+        var sale = await ResolveForAsync(id, token, userId, "Seller", "המכירה לא נמצאה");
+        await MarkHandedAsync(sale, delivered);
+        return await ViewAsync(sale, "Seller");
+    }
+
+    public async Task<object> ReportProblemAsync(string id, string? token, string? userId, string? text)
+    {
+        var sale = await ResolveForAsync(id, token, userId, "Buyer", "הרכישה לא נמצאה");
+        if (string.IsNullOrWhiteSpace(text))
+            throw new ArgumentException("יש לתאר את הבעיה");
+        await ReportProblemAsync(sale, text);
+        return await ViewAsync(sale, "Buyer");
+    }
+
+    private async Task<Sale> ResolveForAsync(string id, string? token, string? userId, string role, string notFound)
+    {
+        var found = await ResolveAsync(id, token, userId);
+        if (found is null || found.Value.Role != role)
+            throw new KeyNotFoundException(notFound);
+        return found.Value.Sale;
+    }
+
+    public async Task<IReadOnlyList<object>> GetAdminListAsync()
+    {
+        var users = (await _users.GetAllAsync()).Where(u => !string.IsNullOrEmpty(u.Id)).ToDictionary(u => u.Id!);
+        return (await _sales.GetAllAsync())
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .Select(s =>
+            {
+                var seller = users.GetValueOrDefault(s.SellerId);
+                var buyer = users.GetValueOrDefault(s.BuyerId);
+                return (object)new
+                {
+                    s.Id, s.ItemId, s.ItemName, s.PaymentMethod, s.Price, s.DeliveryFee, s.Commission, s.SellerAmount, s.DeliveryMethod, s.DeliveryAddress,
+                    s.TrackingId, s.DispatchError, s.Status, s.HandedOverAtUtc, s.NotHandedAtUtc, s.ProblemText, s.CreatedAtUtc, s.ReceivedAtUtc, s.AutoConfirmed, s.SellerPaidAtUtc,
+                    s.PaymentTransactionId,
+                    SellerName = seller?.Name, SellerPhone = seller?.Phone, SellerEmail = seller?.Email,
+                    BuyerName = buyer?.Name, BuyerPhone = buyer?.Phone, BuyerEmail = buyer?.Email
+                };
+            })
+            .ToList();
+    }
+
+    public async Task AdminConfirmReceivedAsync(string id)
+    {
+        var sale = await _sales.GetByIdAsync(id) ?? throw new KeyNotFoundException("המכירה לא נמצאה");
+        sale.Status = "Paid";
+        await ConfirmReceivedAsync(sale);
+    }
 
     public async Task MarkSellerPaidAsync(string id)
     {

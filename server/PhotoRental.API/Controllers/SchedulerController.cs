@@ -33,7 +33,7 @@ public class SchedulerController : ControllerBase
     }
 
     [HttpPost("scheduled-runs")]
-    public async Task<IActionResult> RunScheduled([FromServices] PhotoRental.Service.Services.SaleService sales)
+    public async Task<IActionResult> RunScheduled([FromServices] PhotoRental.Core.Interfaces.ISaleService sales)
     {
         var provided = Request.Headers["X-Scheduler-Key"].ToString();
         if (string.IsNullOrEmpty(_key) || !FixedTimeEquals(provided, _key))

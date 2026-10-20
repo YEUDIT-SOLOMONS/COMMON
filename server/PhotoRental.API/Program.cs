@@ -102,6 +102,11 @@ try
     builder.Services.AddScoped<IItemService, ItemService>();
     builder.Services.AddScoped<ICategoryService, CategoryService>();
     builder.Services.AddScoped<IAdminService, AdminService>();
+    builder.Services.AddScoped<IQuestionService, QuestionService>();
+    builder.Services.AddScoped<IVisitService, VisitService>();
+    builder.Services.AddScoped<IItemMediaService, ItemMediaService>();
+    builder.Services.AddScoped<ICallLogService, CallLogService>();
+    builder.Services.AddScoped<IItemDistanceService, ItemDistanceService>();
     builder.Services.AddScoped<IUserService, UserService>();
     builder.Services.AddScoped<ILoanService, LoanService>();
     builder.Services.AddScoped<IContactMessageService, ContactMessageService>();
@@ -188,7 +193,7 @@ try
     builder.Services.AddScoped<IAvailabilityRequestRepository, AvailabilityRequestRepository>();
     builder.Services.AddScoped<IItemQuestionRepository, ItemQuestionRepository>();
     builder.Services.AddScoped<ISaleRepository, SaleRepository>();
-    builder.Services.AddScoped<PhotoRental.Service.Services.SaleService>();
+    builder.Services.AddScoped<ISaleService, PhotoRental.Service.Services.SaleService>();
     builder.Services.AddScoped<IVisitRepository, VisitRepository>();
     builder.Services.AddScoped<ICityCoordsRepository, CityCoordsRepository>();
     builder.Services.AddScoped<IStreetNeighborhoodRepository, StreetNeighborhoodRepository>();

@@ -13,10 +13,10 @@ namespace PhotoRental.API.Controllers;
 public class LoanExtensionsController : ControllerBase
 {
     private readonly ILoanExtensionService _extensions;
-    private readonly ICallLogRepository _logs;
+    private readonly ICallLogService _logs;
     private readonly TwilioOptions _twilio;
 
-    public LoanExtensionsController(ILoanExtensionService extensions, ICallLogRepository logs, TwilioOptions twilio)
+    public LoanExtensionsController(ILoanExtensionService extensions, ICallLogService logs, TwilioOptions twilio)
     {
         _extensions = extensions;
         _logs = logs;
@@ -74,18 +74,5 @@ public class LoanExtensionsController : ControllerBase
 
     private ContentResult Xml(string twiml) => Content(twiml, "application/xml");
 
-    private async Task SetDetailAsync(string? logId, string detail)
-    {
-        try
-        {
-            var log = string.IsNullOrEmpty(logId) ? null : await _logs.GetByIdAsync(logId);
-            if (log is null) return;
-            log.Detail = detail;
-            await _logs.UpdateAsync(log);
-        }
-        catch
-        {
-            // היומן אינו חיוני לשיחה
-        }
-    }
+    private Task SetDetailAsync(string? logId, string detail) => _logs.SetDetailAsync(logId, detail);
 }

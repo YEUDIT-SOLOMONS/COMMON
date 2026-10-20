@@ -21,9 +21,9 @@ public class AvailabilityCallsController : ControllerBase
     private readonly IAvailabilityCallService _callService;
     private readonly IItemScheduleService _schedule;
     private readonly TwilioOptions _twilioOptions;
-    private readonly ICallLogRepository _callLogs;
+    private readonly ICallLogService _callLogs;
 
-    public AvailabilityCallsController(IAvailabilityCallService callService, TwilioOptions twilioOptions, ICallLogRepository callLogs, IItemScheduleService schedule)
+    public AvailabilityCallsController(IAvailabilityCallService callService, TwilioOptions twilioOptions, ICallLogService callLogs, IItemScheduleService schedule)
     {
         _schedule = schedule;
         _callService = callService;
@@ -185,25 +185,14 @@ public class AvailabilityCallsController : ControllerBase
     // רושם ביומן השיחות מה המשכירה לחצה
     private async Task RecordPressedDigitAsync(string callId, string? digits)
     {
-        try
+        var detail = digits switch
         {
-            var logId = TwilioAvailabilityCallService.GetLogId(callId);
-            var log = string.IsNullOrEmpty(logId) ? null : await _callLogs.GetByIdAsync(logId);
-            if (log is null) return;
-
-            log.Detail = digits switch
-            {
-                "1" => "לחצה 1 - הפריט פנוי",
-                "2" => "לחצה 2 - הפריט תפוס",
-                null or "" => "לא הקישה",
-                _ => $"לחצה {digits}"
-            };
-            await _callLogs.UpdateAsync(log);
-        }
-        catch
-        {
-            // היומן אינו חיוני לשיחה
-        }
+            "1" => "לחצה 1 - הפריט פנוי",
+            "2" => "לחצה 2 - הפריט תפוס",
+            null or "" => "לא הקישה",
+            _ => $"לחצה {digits}"
+        };
+        await _callLogs.SetDetailAsync(TwilioAvailabilityCallService.GetLogId(callId), detail);
     }
 
     private static string? ValidTime(string? value) =>

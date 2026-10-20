@@ -11,16 +11,24 @@ namespace PhotoRental.API.Controllers;
 [Authorize(Roles = "Admin")]
 public class AdminController : ControllerBase
 {
-    private readonly IAdminService _adminService;
-    private readonly ICallLogRepository _callLogs;
+    private const int CallLogLimit = 300;
+    private readonly IAdminService _admin;
+    private readonly ICallLogService _calls;
     private readonly IPayoutService _payouts;
+    private readonly IQuestionService _questions;
+    private readonly IVisitService _visits;
 
-    public AdminController(IAdminService adminService, ICallLogRepository callLogs, IPayoutService payouts)
+    public AdminController(IAdminService admin, ICallLogService calls, IPayoutService payouts, IQuestionService questions, IVisitService visits)
     {
-        _adminService = adminService;
-        _callLogs = callLogs;
+        _admin = admin;
+        _calls = calls;
         _payouts = payouts;
+        _questions = questions;
+        _visits = visits;
     }
+
+    [HttpGet("overview")]
+    public async Task<IActionResult> GetOverview() => Ok(await _admin.GetOverviewAsync());
 
     [HttpGet("payouts")]
     public async Task<IActionResult> GetPayouts() => Ok(await _payouts.GetAsync());
@@ -32,27 +40,16 @@ public class AdminController : ControllerBase
         return proof is null ? NotFound(new { Message = "לא הועלתה אסמכתא" }) : Ok(proof);
     }
 
-    // כל הרחובות שיש בהם פריטים, והשכונה שנקבעה לכל רחוב (מוצגת בחלון הפריט במקום הרחוב)
-    [HttpGet("neighborhoods")]
-    public async Task<IActionResult> GetNeighborhoods([FromServices] IItemRepository items, [FromServices] IStreetNeighborhoodRepository streets)
+    [HttpPost("payouts/payments")]
+    public async Task<IActionResult> MarkPayoutPaid([FromBody] MarkPayoutPaidDto dto)
     {
-        var map = await streets.GetAllAsync();
-        var rows = (await items.GetAllAsync())
-            .Where(i => i.DeletedAtUtc is null && !string.IsNullOrWhiteSpace(i.City))
-            .Select(i => (City: i.City!.Trim(), Street: PhotoRental.Service.Services.ItemService.StreetOf(i)?.Trim()))
-            .Where(r => !string.IsNullOrEmpty(r.Street))
-            .GroupBy(r => r)
-            .Select(g => new
-            {
-                g.Key.City,
-                g.Key.Street,
-                Items = g.Count(),
-                Neighborhood = map.TryGetValue(PhotoRental.Core.Helpers.KnownNeighborhoods.Key(g.Key.City, g.Key.Street), out var n) ? n : null
-            })
-            .OrderBy(r => r.Neighborhood is null ? 0 : 1).ThenBy(r => r.City).ThenBy(r => r.Street)
-            .ToList();
-        return Ok(new { Rows = rows, Options = PhotoRental.Core.Helpers.KnownNeighborhoods.ByCity });
+        await _payouts.MarkPaidAsync(dto);
+        return NoContent();
     }
+
+    // כל הרחובות שיש בהם פריטים, והשכונה שנקבעה לכל רחוב
+    [HttpGet("neighborhoods")]
+    public async Task<IActionResult> GetNeighborhoods() => Ok(await _admin.GetNeighborhoodsAsync());
 
     public class StreetNeighborhoodDto
     {
@@ -62,37 +59,15 @@ public class AdminController : ControllerBase
     }
 
     [HttpPut("neighborhoods")]
-    public async Task<IActionResult> SetNeighborhood([FromBody] StreetNeighborhoodDto dto, [FromServices] IStreetNeighborhoodRepository streets)
+    public async Task<IActionResult> SetNeighborhood([FromBody] StreetNeighborhoodDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.City) || string.IsNullOrWhiteSpace(dto.Street))
-            return BadRequest(new { Message = "חסרים עיר ורחוב" });
-        if (dto.Neighborhood is { Length: > 60 })
-            return BadRequest(new { Message = "שם השכונה ארוך מדי" });
-        await streets.SetAsync(dto.City, dto.Street, dto.Neighborhood);
+        await _admin.SetNeighborhoodAsync(dto.City, dto.Street, dto.Neighborhood);
         return NoContent();
     }
 
     // כל הפריטים לשיוך מחדש לקטגוריה
     [HttpGet("items")]
-    public async Task<IActionResult> GetItems([FromServices] IItemRepository items, [FromServices] IUserRepository users)
-    {
-        var userMap = (await users.GetAllAsync()).Where(u => !string.IsNullOrEmpty(u.Id)).ToDictionary(u => u.Id!);
-        var rows = (await items.GetAllAsync())
-            .Where(i => i.DeletedAtUtc is null && !string.IsNullOrEmpty(i.Id))
-            .OrderByDescending(i => i.CreatedAtUtc)
-            .Select(i => new
-            {
-                i.Id,
-                i.Name,
-                OwnerName = !string.IsNullOrEmpty(i.OwnerId) && userMap.TryGetValue(i.OwnerId, out var o) ? o.Name : string.Empty,
-                i.CategoryId,
-                i.ExtraCategoryId,
-                Image = PhotoRental.Core.Helpers.ImageLinks.Thumb(i.Id, i.ImageDataUrl),
-                i.CreatedAtUtc
-            })
-            .ToList();
-        return Ok(rows);
-    }
+    public async Task<IActionResult> GetItems() => Ok(await _admin.GetItemsAsync());
 
     public class SetItemCategoryDto
     {
@@ -109,31 +84,7 @@ public class AdminController : ControllerBase
 
     // כל ההתכתבויות בין שוכרות למשכירות (שאלות על פריטים)
     [HttpGet("questions")]
-    public async Task<IActionResult> GetQuestions(
-        [FromServices] IItemQuestionRepository questions, [FromServices] IItemRepository items, [FromServices] IUserRepository users)
-    {
-        var itemMap = (await items.GetAllAsync()).Where(i => !string.IsNullOrEmpty(i.Id)).ToDictionary(i => i.Id!);
-        var userMap = (await users.GetAllAsync()).Where(u => !string.IsNullOrEmpty(u.Id)).ToDictionary(u => u.Id!);
-        string Name(string id) => userMap.TryGetValue(id, out var u) ? u.Name : "(משתמשת שנמחקה)";
-        string Email(string id) => userMap.TryGetValue(id, out var u) ? u.Email : string.Empty;
-        var rows = (await questions.GetAllAsync())
-            .OrderByDescending(q => q.LastMessageAtUtc)
-            .Select(q => new
-            {
-                q.Id,
-                q.ItemId,
-                ItemName = itemMap.TryGetValue(q.ItemId, out var i) ? i.Name : "(פריט שנמחק)",
-                OwnerName = Name(q.OwnerId),
-                OwnerEmail = Email(q.OwnerId),
-                RenterName = Name(q.RenterId),
-                RenterEmail = Email(q.RenterId),
-                q.LastMessageAtUtc,
-                q.OwnerToken,
-                Messages = q.Messages.Select(m => new { m.From, m.Text, m.AtUtc, m.ImageIds })
-            })
-            .ToList();
-        return Ok(rows);
-    }
+    public async Task<IActionResult> GetQuestions() => Ok(await _questions.GetAllForAdminAsync());
 
     public class EditMessageDto
     {
@@ -142,174 +93,36 @@ public class AdminController : ControllerBase
 
     // עריכת הודעה בהתכתבות (למשל פרטי קשר שנכתבו). טקסט ריק - מחיקת ההודעה
     [HttpPut("questions/{id}/messages/{index:int}")]
-    public async Task<IActionResult> EditQuestionMessage([FromRoute] string id, [FromRoute] int index, [FromBody] EditMessageDto dto, [FromServices] IItemQuestionRepository questions)
+    public async Task<IActionResult> EditQuestionMessage([FromRoute] string id, [FromRoute] int index, [FromBody] EditMessageDto dto)
     {
-        var thread = await questions.GetByIdAsync(id);
-        if (thread is null || index < 0 || index >= thread.Messages.Count)
-            return NotFound(new { Message = "ההודעה לא נמצאה" });
-        var text = (dto.Text ?? string.Empty).Trim();
-        if (text.Length == 0)
-            thread.Messages.RemoveAt(index);
-        else
-            thread.Messages[index].Text = text.Length > 1000 ? text[..1000] : text;
-        await questions.UpdateAsync(thread);
+        await _questions.EditMessageAsync(id, index, dto.Text);
         return NoContent();
     }
 
     [HttpGet("loans")]
-    public async Task<IActionResult> GetLoans(
-        [FromServices] ILoanRepository loans, [FromServices] IItemRepository items, [FromServices] IUserRepository users)
-    {
-        var itemMap = (await items.GetAllAsync()).Where(i => !string.IsNullOrEmpty(i.Id)).ToDictionary(i => i.Id!);
-        var userMap = (await users.GetAllAsync()).Where(u => !string.IsNullOrEmpty(u.Id)).ToDictionary(u => u.Id!);
-        string NameOf(string? id) => !string.IsNullOrEmpty(id) && userMap.TryGetValue(id, out var u) ? u.Name : string.Empty;
+    public async Task<IActionResult> GetLoans() => Ok(await _admin.GetLoansAsync());
 
-        var rows = (await loans.GetAllAsync())
-            .OrderByDescending(l => l.LoanDate)
-            .Select(l =>
-            {
-                itemMap.TryGetValue(l.ItemCopyId ?? string.Empty, out var item);
-                var renter = !string.IsNullOrEmpty(l.BorrowerId) && userMap.TryGetValue(l.BorrowerId, out var r) ? r : null;
-                return new PhotoRental.Core.DTOs.AdminLoanDto
-                {
-                    Id = l.Id ?? string.Empty,
-                    ItemName = item is null ? "(פריט שנמחק)" : PhotoRental.Core.Helpers.LoanText.Name(item, l),
-                    RenterName = renter?.Name ?? "(משתמשת שנמחקה)",
-                    RenterEmail = renter?.Email ?? string.Empty,
-                    OwnerName = NameOf(item?.OwnerId),
-                    CreatedAt = l.LoanDate,
-                    StartDate = l.StartDate,
-                    StartTime = l.StartTime,
-                    ExpectedReturnDate = DateTime.SpecifyKind(l.ExpectedReturnDate, DateTimeKind.Unspecified),
-                    ActualReturnDate = l.ActualReturnDate,
-                    Status = l.Status.ToString(),
-                    PaymentMethod = l.PaymentMethod.ToString(),
-                    PaymentStatus = l.PaymentStatus.ToString(),
-                    DeliveryMethod = l.DeliveryMethod.ToString(),
-                    Total = (l.RentalDays + l.LateDays) * l.RateOr(item?.DailyPrice ?? 0) * l.Units + l.DeliveryFee + l.ReturnFee
-                };
-            })
-            .ToList();
-        return Ok(rows);
-    }
-
-    // מחיקת השכרה לצמיתות (למשל השכרת ניסיון). לוח הזמנים ומצב הפריט מתעדכנים
+    // מחיקת השכרה לצמיתות (למשל השכרת ניסיון)
     [HttpDelete("loans/{id}")]
-    public async Task<IActionResult> DeleteLoan([FromRoute] string id, [FromServices] ILoanRepository loans, [FromServices] IItemScheduleService schedule)
+    public async Task<IActionResult> DeleteLoan([FromRoute] string id)
     {
-        var loan = await loans.GetByIdAsync(id);
-        if (loan is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
-        await loans.DeleteAsync(id);
-        PhotoRental.Core.Helpers.CatalogCache.Invalidate();
-        if (!string.IsNullOrEmpty(loan.ItemCopyId))
-        {
-            try { await schedule.RefreshStatusAsync(loan.ItemCopyId); } catch { }
-        }
+        await _admin.DeleteLoanAsync(id);
         return NoContent();
     }
 
     [HttpGet("favorites")]
-    public async Task<IActionResult> GetFavorites(
-        [FromServices] IFavoriteRepository favorites, [FromServices] IItemRepository items, [FromServices] IUserRepository users)
-    {
-        var all = (await favorites.GetAllAsync()).Where(f => f.IsFavorite || f.NotifyWhenAvailable).ToList();
-        var itemMap = (await items.GetAllAsync()).Where(i => !string.IsNullOrEmpty(i.Id)).ToDictionary(i => i.Id!);
-        var userMap = (await users.GetAllAsync()).Where(u => !string.IsNullOrEmpty(u.Id)).ToDictionary(u => u.Id!);
-
-        var rows = all.GroupBy(f => f.ItemId)
-            .Where(g => itemMap.ContainsKey(g.Key) && itemMap[g.Key].DeletedAtUtc is null)
-            .Select(g =>
-            {
-                var item = itemMap[g.Key];
-                return new PhotoRental.Core.DTOs.AdminFavoriteDto
-                {
-                    ItemId = g.Key,
-                    ItemName = item.Name,
-                    OwnerName = !string.IsNullOrEmpty(item.OwnerId) && userMap.TryGetValue(item.OwnerId, out var owner) ? owner.Name : string.Empty,
-                    Status = item.Status.ToString(),
-                    Favorites = g.Count(f => f.IsFavorite),
-                    Waiting = g.Count(f => f.NotifyWhenAvailable),
-                    LastSavedUtc = g.Max(f => f.CreatedAtUtc),
-                    Savers = g.OrderByDescending(f => f.CreatedAtUtc)
-                        .Select(f => userMap.TryGetValue(f.UserId, out var u)
-                            ? new PhotoRental.Core.DTOs.AdminFavoriteSaverDto { Name = u.Name, Email = u.Email, Waiting = f.NotifyWhenAvailable }
-                            : new PhotoRental.Core.DTOs.AdminFavoriteSaverDto { Name = "(משתמשת שנמחקה)", Waiting = f.NotifyWhenAvailable })
-                        .ToList()
-                };
-            })
-            .OrderByDescending(r => r.Favorites + r.Waiting)
-            .ThenByDescending(r => r.LastSavedUtc)
-            .ToList();
-        return Ok(rows);
-    }
+    public async Task<IActionResult> GetFavorites() => Ok(await _admin.GetFavoritesAsync());
 
     [HttpGet("visits")]
-    public async Task<IActionResult> GetVisits([FromServices] IVisitRepository visits) => Ok(await visits.GetAllAsync());
+    public async Task<IActionResult> GetVisits() => Ok(await _visits.GetAllAsync());
 
-    [HttpPost("payouts/payments")]
-    public async Task<IActionResult> MarkPayoutPaid([FromBody] MarkPayoutPaidDto dto)
-    {
-        await _payouts.MarkPaidAsync(dto);
-        return NoContent();
-    }
-
-    // יומן שיחות הטלפון האוטומטיות (החדשות ראשונות, עד 300)
+    // יומן שיחות הטלפון האוטומטיות (החדשות ראשונות)
     [HttpGet("calls")]
-    public async Task<IActionResult> GetCalls()
-    {
-        var logs = await _callLogs.GetAllAsync();
-        var rows = logs
-            .OrderByDescending(l => l.CreatedAtUtc)
-            .Take(300)
-            .Select(l => new CallLogDto
-            {
-                Id = l.Id ?? string.Empty,
-                Kind = l.Kind,
-                ItemName = l.ItemName,
-                ToName = l.ToName,
-                ToPhone = l.ToPhone,
-                InterestedEmail = l.InterestedEmail,
-                CreatedAtUtc = l.CreatedAtUtc,
-                Status = l.Status,
-                ScheduledForLocal = l.ScheduledForLocal is null ? null : DateTime.SpecifyKind(l.ScheduledForLocal.Value, DateTimeKind.Unspecified),
-                Detail = l.Detail,
-                Message = l.Message
-            })
-            .ToList();
-        return Ok(rows);
-    }
+    public async Task<IActionResult> GetCalls() => Ok(await _calls.GetRecentAsync(CallLogLimit));
 
-    // שליחה חוזרת של שיחת היכרות: נוצרת שיחה מתוזמנת חדשה עם אותו נוסח (בשבת/חג - נדחית למוצאי השבת/החג).
-    // תצא בסבב הבא של המתזמן (תוך כמה דקות)
+    // שליחה חוזרת של שיחת היכרות. תצא בסבב הבא של המתזמן (תוך כמה דקות)
     [HttpPost("calls/{id}/resends")]
-    public async Task<IActionResult> ResendCall([FromRoute] string id)
-    {
-        var original = await _callLogs.GetByIdAsync(id);
-        if (original is null)
-            return NotFound(new { Message = "השיחה לא נמצאה" });
-        if (original.Kind != "Welcome")
-            return BadRequest(new { Message = "אפשר לשלוח שוב רק שיחת היכרות" });
-
-        var phoneKey = new string((original.ToPhone ?? string.Empty).Where(char.IsDigit).ToArray());
-        if ((await _callLogs.GetByStatusAsync("Scheduled")).Any(l => l.Kind == "Welcome" &&
-                new string((l.ToPhone ?? string.Empty).Where(char.IsDigit).ToArray()) == phoneKey))
-            return Conflict(new { Message = "כבר יש שיחת היכרות מתוזמנת למספר הזה" });
-
-        var nowLocal = PhotoRental.Core.Helpers.IsraelTime.Now;
-        var next = PhotoRental.Core.Helpers.CallWindow.NextAllowed(nowLocal);
-        var created = await _callLogs.CreateAsync(new PhotoRental.Core.Entities.CallLog
-        {
-            Kind = original.Kind,
-            ToUserId = original.ToUserId,
-            ToName = original.ToName,
-            ToPhone = original.ToPhone,
-            Message = original.Message,
-            CreatedAtUtc = DateTime.UtcNow,
-            Status = "Scheduled",
-            ScheduledForLocal = next > nowLocal ? next : nowLocal.AddMinutes(-1)
-        });
-        return Ok(new { created.Id, ScheduledForLocal = next > nowLocal ? next : (DateTime?)null });
-    }
+    public async Task<IActionResult> ResendCall([FromRoute] string id) => Ok(await _calls.ResendWelcomeAsync(id));
 
     public class AvailabilityResendDto
     {
@@ -337,19 +150,7 @@ public class AdminController : ControllerBase
     [HttpPost("calls/{id}/cancellation")]
     public async Task<IActionResult> CancelCall([FromRoute] string id)
     {
-        var log = await _callLogs.GetByIdAsync(id);
-        if (log is null)
-            return NotFound(new { Message = "השיחה לא נמצאה" });
-        if (log.Status is not ("Scheduled" or "RetryScheduled"))
-            return BadRequest(new { Message = "אפשר לבטל רק שיחה שעוד לא יצאה" });
-        log.Status = "Canceled";
-        await _callLogs.UpdateAsync(log);
+        await _calls.CancelAsync(id);
         return NoContent();
-    }
-
-    [HttpGet("overview")]
-    public async Task<IActionResult> GetOverview()
-    {
-        return Ok(await _adminService.GetOverviewAsync());
     }
 }

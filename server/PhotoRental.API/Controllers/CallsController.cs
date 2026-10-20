@@ -12,23 +12,16 @@ namespace PhotoRental.API.Controllers;
 [Route("api/calls")]
 public class CallsController : ControllerBase
 {
-    private readonly ICallLogRepository _logs;
+    private readonly ICallLogService _logs;
     private readonly TwilioOptions _twilio;
-    private readonly ILoanExtensionService _extensions;
     private readonly IPartyBridgeService _bridge;
     private readonly ILoanService _loans;
-    private readonly IOutboundCallService _outbound;
 
-    private readonly IAvailabilityCallService _availability;
-
-    public CallsController(ICallLogRepository logs, TwilioOptions twilio, ILoanExtensionService extensions, IPartyBridgeService bridge, ILoanService loans, IOutboundCallService outbound, IAvailabilityCallService availability)
+    public CallsController(ICallLogService logs, TwilioOptions twilio, IPartyBridgeService bridge, ILoanService loans)
     {
-        _availability = availability;
-        _outbound = outbound;
         _loans = loans;
         _logs = logs;
         _twilio = twilio;
-        _extensions = extensions;
         _bridge = bridge;
     }
 
@@ -118,13 +111,7 @@ public class CallsController : ControllerBase
             detail = string.IsNullOrEmpty(digits) ? "לא הקישה" : $"הקישה {digits}";
         }
 
-        var log = string.IsNullOrWhiteSpace(logId) ? null : await _logs.GetByIdAsync(logId);
-        if (log is not null)
-        {
-            log.Detail = detail;
-            await _logs.UpdateAsync(log);
-        }
-
+        await _logs.SetDetailAsync(logId, detail);
         return Xml(CallTwiml.SayAndHangup(message));
     }
 
@@ -144,48 +131,8 @@ public class CallsController : ControllerBase
         if (!string.IsNullOrEmpty(_twilio.AuthToken) && !TwilioSignature.IsValid(Request, form, _twilio))
             return Unauthorized();
 
-        var log = string.IsNullOrWhiteSpace(logId) ? null : await _logs.GetByIdAsync(logId);
-        if (log is null || log.Status == "Canceled")
-            return Ok();
-
         var callStatus = form.TryGetValue("CallStatus", out var cs) ? cs.ToString() : string.Empty;
-        log.Status = callStatus switch
-        {
-            "completed" => "Answered",
-            "no-answer" => "NoAnswer",
-            "busy" => "Busy",
-            "failed" or "canceled" => "Failed",
-            _ => log.Status
-        };
-        await _logs.UpdateAsync(log);
-
-        // שיחת אימות זמינות שנדחתה / הסתיימה בלי הקשה - "לא ענתה" מיד, בלי לחכות לתום זמן ההמתנה
-        if (log.Kind == "Availability" && callStatus is "completed" or "no-answer" or "busy" or "failed" or "canceled")
-        {
-            PhotoRental.Service.Services.TwilioAvailabilityCallService.MarkEndedWithoutAnswer(logId);
-            try { await _availability.NotifyRetryResultsAsync(); } catch { }
-            try { await _availability.CallEndedWithoutAnswerAsync(logId); } catch { }
-        }
-
-        // המשכירה לא ענתה / לא הקישה לבקשת הארכה - ניסיון חוזר אחד בעוד כמה דקות (אם הבקשה עדיין ממתינה)
-        if (log.Kind == "ExtensionRequest" && !string.IsNullOrEmpty(log.LoanId) && log.Status is "NoAnswer" or "Busy" or "Failed" or "Answered")
-            await _extensions.OwnerCallEndedWithoutAnswerAsync(log.LoanId);
-
-        if (log.Kind is "ExtensionRequest" or "PickupReminder" or "PickupOwnerReminder" && log.Status is "NoAnswer" or "Busy" or "Failed")
-        {
-            try { await _outbound.SendMissedCallEmailAsync(log); } catch { }
-        }
-
-        if (log.Kind == "Welcome" && log.Status is "NoAnswer" or "Busy" or "Failed")
-        {
-            try { await _outbound.WelcomeUnansweredAsync(log); } catch { }
-        }
-
-        // שיחה שלא נענתה - ניסיון חוזר (ראו OutboundCallService.CallEndedUnansweredAsync)
-        if (log.Kind is "Reminder" or "NotReturned" or "ExtensionApproved" or "ExtensionDeclined" or "PickupReminder" or "PickupOwnerReminder"
-            && log.Status is "NoAnswer" or "Busy" or "Failed")
-            await _outbound.CallEndedUnansweredAsync(log);
-
+        await _logs.HandleTwilioStatusAsync(logId, callStatus);
         return Ok();
     }
 }

@@ -93,6 +93,7 @@ PhotoRental.sln
   PhotoRental.Tests     // xUnit + Moq, בדיקות pipeline, בדיקות מול האמולטור
 ```
 
+- **שכבות:** כל Controller עובד רק מול ממשקי Service מ-Core (‏`IQuestionService`, ‏`ISaleService`, ‏`IAdminService`, ‏`ICallLogService` ועוד). אף Controller לא ניגש ל-Repository או לבסיס הנתונים, ואף ישות לא יוצאת מה-API: התשובות הן DTOs.
 - **Middleware:** ‏`GlobalExceptionMiddleware` (ראשון בצנרת, תשובת JSON אחידה: `statusCode`, `message`,
   `correlationId`) ו-`CorrelationIdMiddleware` (מזהה לכל בקשה, כותרת `X-Correlation-Id`, לוג לכל בקשה).
   ‏Authentication לפני Authorization.
