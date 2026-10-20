@@ -37,3 +37,6 @@ marketing/gif-frames/_profile/
 
 # חומרי שיווק - נשמרים במחשב בלבד
 marketing/
+
+# סקריפטי פריסה פנימיים - נשמרים במחשב בלבד
+server/deploy/

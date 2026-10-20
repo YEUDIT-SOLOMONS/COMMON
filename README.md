@@ -25,7 +25,6 @@ PhotoRental/
 │   ├── PhotoRental.Service/    הלוגיקה העסקית (השכרות, מכירות, שיחות, משלוחים, תשלומים)
 │   ├── PhotoRental.Data/       גישה ל-Firestore (Repositories)
 │   ├── PhotoRental.Core/       ישויות, DTOs, ממשקים ועזרים משותפים
-│   ├── deploy/                 סקריפטים לפריסה מ-Google Cloud Shell ו-Cloud Scheduler
 │   ├── Dockerfile              בניית תמונת השרת ל-Cloud Run
 │   └── PhotoRental.sln
 ```
@@ -84,19 +83,17 @@ npm run dev
 ```bash
 cd client
 npm run build
-npx firebase deploy --only hosting --project rent-photo
+npx firebase deploy --only hosting --project <project-id>
 ```
 
 ### שרת (Cloud Run)
 
 ```bash
 cd server
-gcloud builds submit . --tag me-west1-docker.pkg.dev/rent-photo/cloud-run-source-deploy/photorental-api:<tag> --project rent-photo
-gcloud run services update photorental-api --image me-west1-docker.pkg.dev/rent-photo/cloud-run-source-deploy/photorental-api:<tag> --region me-west1 --project rent-photo
+gcloud builds submit . --tag <image> --project <project-id>
+gcloud run services update <service> --image <image> --region <region> --project <project-id>
 ```
 
-אפשר גם להריץ את `server/deploy/deploy-backend.sh` מתוך Google Cloud Shell.
-הסקריפטים שבתיקייה `server/deploy` יוצרים את הסודות ב-Secret Manager ומחברים אותם לשרת.
 
 ## סודות והגדרות
 
