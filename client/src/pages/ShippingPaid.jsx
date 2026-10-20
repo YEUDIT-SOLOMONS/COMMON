@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { loansApi, salesApi, shippingPayApi } from '../api/endpoints.js'
+import { loansApi, shippingPayApi } from '../api/endpoints.js'
 import { BrandMark } from '../components/BrandMark.jsx'
 import { Loader } from '../components/Loader.jsx'
 
@@ -35,12 +35,6 @@ export function ShippingPaid() {
       setState('creating')
       setError('')
       try {
-        if (stored.draft.sale) {
-          const sale = await salesApi.create({ ...stored.draft.sale, shippingPaymentId })
-          sessionStorage.removeItem(SHIPPING_DRAFT_KEY)
-          navigate(`/purchase/${sale.id}?t=${sale.token}`, { replace: true })
-          return
-        }
         const draft = { ...stored.draft, shippingPaymentId }
         const created = stored.isBatch ? await loansApi.createBatch(draft) : await loansApi.create(draft)
         sessionStorage.removeItem(SHIPPING_DRAFT_KEY)

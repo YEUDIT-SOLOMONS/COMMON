@@ -1,17 +1,23 @@
 namespace PhotoRental.Core.DTOs;
 
+using System.ComponentModel.DataAnnotations;
+
 // נשלח מהלקוח כדי לפתוח עסקת השכרה חדשה
 public class LoanRequestDto
 {
+    [Required(ErrorMessage = "יש לציין מזהה פריט")]
     public string ItemId { get; set; } = string.Empty;
+    [Required(ErrorMessage = "יש לציין מזהה שוכרת")]
     public string BorrowerId { get; set; } = string.Empty;
 
     // תאריך תחילת ההשכרה שבחר השוכר (ברירת מחדל: היום) ומספר הימים המבוקש לשכירות
     public DateTime StartDate { get; set; }
+    [Range(1, 365)]
     public int RentalDays { get; set; } = 1;
     public bool SameDayReturn { get; set; }
 
     // כמה יחידות של הפריט (כשיש למשכירה כמה עותקים)
+    [Range(1, 100)]
     public int Quantity { get; set; } = 1;
 
     // שעת תחילת ההשכרה / האיסוף ("HH:mm") - אופציונלי; נשמרת ומוצגת לשוכר ולמשכיר (לא משפיעה על המחיר)
@@ -58,12 +64,15 @@ public class LoanRequestDto
 // כל שאר השדות זהים במשמעותם ל-LoanRequestDto.
 public class LoanBatchRequestDto
 {
+    [MinLength(1, ErrorMessage = "יש לבחור לפחות פריט אחד")]
     public List<string> ItemIds { get; set; } = new();
 
     // כמות לכל פריט (מזהה פריט -> יחידות). פריט שלא מופיע - יחידה אחת
     public Dictionary<string, int>? Quantities { get; set; }
+    [Required]
     public string BorrowerId { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
+    [Range(1, 365)]
     public int RentalDays { get; set; } = 1;
     public bool SameDayReturn { get; set; }
     public string? StartTime { get; set; }

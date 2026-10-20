@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Interfaces;
@@ -26,7 +26,7 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> GetPayouts() => Ok(await _payouts.GetAsync());
 
     [HttpGet("payouts/{loanId}/proof")]
-    public async Task<IActionResult> GetPayoutProof(string loanId, [FromServices] ILoanService loans)
+    public async Task<IActionResult> GetPayoutProof([FromRoute] string loanId, [FromServices] ILoanService loans)
     {
         var proof = await loans.GetPayoutProofAsync(loanId);
         return proof is null ? NotFound(new { Message = "לא הועלתה אסמכתא" }) : Ok(proof);
@@ -101,7 +101,7 @@ public class AdminController : ControllerBase
     }
 
     [HttpPut("items/{id}/category")]
-    public async Task<IActionResult> SetItemCategory(string id, [FromBody] SetItemCategoryDto dto, [FromServices] IItemService itemService)
+    public async Task<IActionResult> SetItemCategory([FromRoute] string id, [FromBody] SetItemCategoryDto dto, [FromServices] IItemService itemService)
     {
         await itemService.SetCategoryAsync(id, dto.CategoryId, dto.ExtraCategoryId);
         return NoContent();
@@ -142,7 +142,7 @@ public class AdminController : ControllerBase
 
     // עריכת הודעה בהתכתבות (למשל פרטי קשר שנכתבו). טקסט ריק - מחיקת ההודעה
     [HttpPut("questions/{id}/messages/{index:int}")]
-    public async Task<IActionResult> EditQuestionMessage(string id, int index, [FromBody] EditMessageDto dto, [FromServices] IItemQuestionRepository questions)
+    public async Task<IActionResult> EditQuestionMessage([FromRoute] string id, [FromRoute] int index, [FromBody] EditMessageDto dto, [FromServices] IItemQuestionRepository questions)
     {
         var thread = await questions.GetByIdAsync(id);
         if (thread is null || index < 0 || index >= thread.Messages.Count)
@@ -182,7 +182,6 @@ public class AdminController : ControllerBase
                     StartTime = l.StartTime,
                     ExpectedReturnDate = DateTime.SpecifyKind(l.ExpectedReturnDate, DateTimeKind.Unspecified),
                     ActualReturnDate = l.ActualReturnDate,
-                    ReturnedBy = l.ReturnedBy,
                     Status = l.Status.ToString(),
                     PaymentMethod = l.PaymentMethod.ToString(),
                     PaymentStatus = l.PaymentStatus.ToString(),
@@ -196,7 +195,7 @@ public class AdminController : ControllerBase
 
     // מחיקת השכרה לצמיתות (למשל השכרת ניסיון). לוח הזמנים ומצב הפריט מתעדכנים
     [HttpDelete("loans/{id}")]
-    public async Task<IActionResult> DeleteLoan(string id, [FromServices] ILoanRepository loans, [FromServices] IItemScheduleService schedule)
+    public async Task<IActionResult> DeleteLoan([FromRoute] string id, [FromServices] ILoanRepository loans, [FromServices] IItemScheduleService schedule)
     {
         var loan = await loans.GetByIdAsync(id);
         if (loan is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -247,7 +246,7 @@ public class AdminController : ControllerBase
     [HttpGet("visits")]
     public async Task<IActionResult> GetVisits([FromServices] IVisitRepository visits) => Ok(await visits.GetAllAsync());
 
-    [HttpPost("payouts/mark-paid")]
+    [HttpPost("payouts/payments")]
     public async Task<IActionResult> MarkPayoutPaid([FromBody] MarkPayoutPaidDto dto)
     {
         await _payouts.MarkPaidAsync(dto);
@@ -282,8 +281,8 @@ public class AdminController : ControllerBase
 
     // שליחה חוזרת של שיחת היכרות: נוצרת שיחה מתוזמנת חדשה עם אותו נוסח (בשבת/חג - נדחית למוצאי השבת/החג).
     // תצא בסבב הבא של המתזמן (תוך כמה דקות)
-    [HttpPost("calls/{id}/resend")]
-    public async Task<IActionResult> ResendCall(string id)
+    [HttpPost("calls/{id}/resends")]
+    public async Task<IActionResult> ResendCall([FromRoute] string id)
     {
         var original = await _callLogs.GetByIdAsync(id);
         if (original is null)
@@ -319,8 +318,8 @@ public class AdminController : ControllerBase
     }
 
     // אימות זמינות שלא נענה: שיחה חוזרת (מכבדת שעות שקטות) ו/או מייל למשכירה עם כפתור תשובה
-    [HttpPost("calls/{id}/availability-resend")]
-    public async Task<IActionResult> ResendAvailability(string id, [FromBody] AvailabilityResendDto dto,
+    [HttpPost("calls/{id}/availability-resends")]
+    public async Task<IActionResult> ResendAvailability([FromRoute] string id, [FromBody] AvailabilityResendDto dto,
         [FromServices] IAvailabilityCallService availability)
     {
         try
@@ -335,8 +334,8 @@ public class AdminController : ControllerBase
     }
 
     // ביטול שיחה שעוד לא יצאה
-    [HttpPost("calls/{id}/cancel")]
-    public async Task<IActionResult> CancelCall(string id)
+    [HttpPost("calls/{id}/cancellation")]
+    public async Task<IActionResult> CancelCall([FromRoute] string id)
     {
         var log = await _callLogs.GetByIdAsync(id);
         if (log is null)

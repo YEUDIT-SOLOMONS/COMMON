@@ -1,31 +1,23 @@
 ﻿namespace PhotoRental.Core.Entities;
 
-using Google.Cloud.Firestore;
 using PhotoRental.Core.Enums;
 
-[FirestoreData]
 public class Loan
 {
-    [FirestoreDocumentId]
     public string? Id { get; set; }
 
     // מזהה העותק המושכר
-    [FirestoreProperty]
     public string? ItemCopyId { get; set; }
 
     // מזהה המשתמש השוכר
-    [FirestoreProperty]
     public string? BorrowerId { get; set; }
 
-    [FirestoreProperty]
     public DateTime LoanDate { get; set; }
 
     // תאריך תחילת ההשכרה שנבחר ע"י השוכר (יכול להיות היום או תאריך עתידי) ומספר הימים המבוקש -
     // ExpectedReturnDate מחושב מהם אוטומטית בשכבת השירות (StartDate + RentalDays).
-    [FirestoreProperty]
     public DateTime StartDate { get; set; }
 
-    [FirestoreProperty]
     public int RentalDays { get; set; } = 1;
 
     // כמה יחידות של הפריט הושכרו בהשכרה הזו
@@ -40,7 +32,6 @@ public class Loan
     public bool IsLocation { get; set; }
 
     // שעת תחילת ההשכרה/האיסוף ("HH:mm") - אופציונלי
-    [FirestoreProperty]
     public string? StartTime { get; set; }
 
     // אחוז עמלת השירות שנקבע ברגע פתיחת ההשכרה (למשל 0.07) - נשמר כדי ששינוי עתידי באחוז לא ישנה חיובי עבר.
@@ -83,32 +74,22 @@ public class Loan
     // מתי המשכירה סימנה בחלון שהפריט עדיין לא הוחזר (אז נשלחו לשוכרת מייל ושיחה, והצוות עודכן)
     public DateTime? NotReturnedReportedAt { get; set; }
 
-    [FirestoreProperty]
     public DateTime ExpectedReturnDate { get; set; }
 
-    [FirestoreProperty]
     public DateTime? ActualReturnDate { get; set; }
 
-    // מי סימנה שהוחזר ואיך, למשל "משכירה · באתר"
-    public string? ReturnedBy { get; set; }
-
-    [FirestoreProperty]
     public LoanStatus Status { get; set; } = LoanStatus.Active;
 
     // אופן קבלת הפריט: איסוף עצמי או משלוח
-    [FirestoreProperty]
     public DeliveryMethod DeliveryMethod { get; set; } = DeliveryMethod.SelfPickup;
 
     // משלוח אקספרס (תוך זמן קצר) - רלוונטי רק כאשר אופן הקבלה הוא משלוח ותאריך ההתחלה הוא היום.
-    [FirestoreProperty]
     public bool ExpressDelivery { get; set; }
 
     // עלות המשלוח (₪) - מחושבת ונשמרת בעת יצירת ההשכרה, ומתווספת לסכום הכולל. 0 באיסוף עצמי.
-    [FirestoreProperty]
     public decimal DeliveryFee { get; set; }
 
     // כתובת השוכר - נדרשת רק כאשר יש מעורבות שליח בהובלה (משלוח יוצא ו/או איסוף שליח בהחזרה)
-    [FirestoreProperty]
     public string? DeliveryAddress { get; set; }
 
     // כתובת איסוף ההחזרה כשהיא שונה מכתובת המשלוח (ריק = נאסף מכתובת המשלוח)
@@ -136,15 +117,12 @@ public class Loan
     public string? CancelledBy { get; set; }
 
     // אופן ההחזרה בתום ההשכרה - נקבע מראש יחד עם מועד ההחזרה המשוער (ExpectedReturnDate)
-    [FirestoreProperty]
     public ReturnMethod ReturnMethod { get; set; } = ReturnMethod.SelfDropoff;
 
     // מזהי מעקב משלוח מדומים (ראו SimulatedShippingService) - המשלוח היוצא (אם DeliveryMethod=Delivery)
     // ואיסוף השליח בהחזרה (אם ReturnMethod=CourierPickup), כל אחד מתוזמן ונשלח אוטומטית כבר בעת יצירת ההשכרה.
-    [FirestoreProperty]
     public string? OutboundTrackingId { get; set; }
 
-    [FirestoreProperty]
     public string? ReturnTrackingId { get; set; }
 
     // מזהי המשלוחים אצל חברת השילוח (GetPackage) - לשליפת מצב חי: זמן הגעה, שליח ומיקום (ראו IShippingService.GetStatusAsync)
@@ -156,23 +134,18 @@ public class Loan
 
     // מועד שליחת תזכורת ההחזרה לשוכר (ראו ReturnReminderBackgroundService) - null כל עוד לא נשלחה,
     // מונע שליחה כפולה של אותה תזכורת.
-    [FirestoreProperty]
     public DateTime? ReturnReminderSentAt { get; set; }
 
     // אמצעי התשלום שבחר השוכר: מזומן (רק באיסוף עצמי) / העברה בנקאית / כרטיס אשראי
-    [FirestoreProperty]
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
 
-    [FirestoreProperty]
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
 
     // מזהה עסקת הסליקה שהתקבל מ-SimulatedUpayPaymentService - קיים רק כאשר PaymentMethod=CreditCard
-    [FirestoreProperty]
     public string? PaymentTransactionId { get; set; }
 
     // מזהה משותף לכמה עסקאות השכרה שנפתחו יחד כהזמנה אחת (כמה פריטים מאותו משכיר בהזמנה
     // בודדת - ראו LoanService.CreateBatchAsync). null עבור השכרה בודדת רגילה.
-    [FirestoreProperty]
     public string? OrderGroupId { get; set; }
 
     // אובייקטי ניווט נוחים - מאוכלסים ידנית ע"י שכבת השירות (Service) לצורך תצוגה,

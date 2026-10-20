@@ -25,9 +25,9 @@ public class UserRepository : IUserRepository
         return documents.Select(ToEntity).ToList();
     }
 
-    public async Task<User?> GetByIdAsync(string id)
+    public async Task<User?> GetByIdAsync(string id, CancellationToken ct = default)
     {
-        var document = await _firebase.GetDocumentAsync(CollectionName, id);
+        var document = await _firebase.GetDocumentAsync(CollectionName, id, ct);
         return document is null ? null : ToEntity(document);
     }
 

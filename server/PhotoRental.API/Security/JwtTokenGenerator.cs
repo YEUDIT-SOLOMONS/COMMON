@@ -1,31 +1,31 @@
-﻿namespace PhotoRental.API.Security;
+namespace PhotoRental.API.Security;
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PhotoRental.Core.Entities;
+using PhotoRental.Core.Options;
 
 // הנפקת טוקן JWT חתום עבור משתמש מאומת. שייכת לשכבת ה-API (ולא לשכבת השירות),
 // כי הנפקת/אימות טוקנים היא אחריות של שכבת האירוח (Web Host) בלבד, ותלויה בהגדרות
 // התצורה (Jwt:Key/Issuer/Audience) שנטענות כאן ובאותה צורה ב-Program.cs (לאימות הטוקן בחזרה).
 public class JwtTokenGenerator : IJwtTokenGenerator
 {
-    private readonly IConfiguration _configuration;
+    private readonly JwtOptions _options;
 
-    public JwtTokenGenerator(IConfiguration configuration)
+    public JwtTokenGenerator(IOptions<JwtOptions> options)
     {
-        _configuration = configuration;
+        _options = options.Value;
     }
 
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(User user)
     {
-        var jwtSection = _configuration.GetSection("Jwt");
-        var key = jwtSection["Key"]
-            ?? throw new InvalidOperationException("יש להגדיר את Jwt:Key בקובץ ההגדרות appsettings.json");
-        var issuer = jwtSection["Issuer"] ?? "PhotoRentalAPI";
-        var audience = jwtSection["Audience"] ?? "PhotoRentalClient";
-        var expiryMinutes = int.TryParse(jwtSection["ExpiryMinutes"], out var minutes) ? minutes : 1440;
+        var key = _options.Key;
+        var issuer = _options.Issuer;
+        var audience = _options.Audience;
+        var expiryMinutes = _options.ExpiryMinutes;
 
         var claims = new List<Claim>
         {

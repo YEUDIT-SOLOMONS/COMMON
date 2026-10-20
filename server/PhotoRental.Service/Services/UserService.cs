@@ -1,5 +1,6 @@
 namespace PhotoRental.Service.Services;
 
+using AutoMapper;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Helpers;
 using PhotoRental.Core.Entities;
@@ -9,11 +10,13 @@ using PhotoRental.Core.Interfaces;
 // שכבת הלוגיקה העסקית לניהול משתמשים
 public class UserService : IUserService
 {
+    private readonly IMapper _mapper;
     private readonly IUserRepository _userRepository;
     private readonly IOutboundCallService _calls;
 
-    public UserService(IUserRepository userRepository, IOutboundCallService calls)
+    public UserService(IUserRepository userRepository, IOutboundCallService calls, IMapper mapper)
     {
+        _mapper = mapper;
         _userRepository = userRepository;
         _calls = calls;
     }
@@ -21,13 +24,13 @@ public class UserService : IUserService
     public async Task<IReadOnlyList<UserDto>> GetAllAsync()
     {
         var users = await _userRepository.GetAllAsync();
-        return users.Select(MapToDto).ToList();
+        return users.Select(_mapper.Map<UserDto>).ToList();
     }
 
     public async Task<UserDto?> GetByIdAsync(string id)
     {
         var user = await _userRepository.GetByIdAsync(id);
-        return user is null ? null : MapToDto(user);
+        return user is null ? null : _mapper.Map<UserDto>(user);
     }
 
     public async Task<UserDto> CreateAsync(UserCreateDto dto)
@@ -52,7 +55,7 @@ public class UserService : IUserService
         };
 
         var created = await _userRepository.CreateAsync(user);
-        return MapToDto(created);
+        return _mapper.Map<UserDto>(created);
     }
 
     public async Task<UserDto> UpdateAddressAsync(string id, UserAddressUpdateDto dto)
@@ -87,7 +90,7 @@ public class UserService : IUserService
         user.AddressFloor = floor;
         user.AddressApartment = apartment;
         user.AddressStreet = street;
-        return MapToDto(user);
+        return _mapper.Map<UserDto>(user);
     }
 
     // אישור תנאי עמלת השירות (פעם אחת, בעת הוספת הפריט הראשון) - נשמר עם חותמת זמן
@@ -99,7 +102,7 @@ public class UserService : IUserService
         var now = DateTime.UtcNow;
         await _userRepository.UpdateCommissionConsentAsync(id, now);
         user.CommissionConsentAtUtc = now;
-        return MapToDto(user);
+        return _mapper.Map<UserDto>(user);
     }
 
     public async Task<UserDto> AcceptSaleCommissionAsync(string id)
@@ -110,7 +113,7 @@ public class UserService : IUserService
         var now = DateTime.UtcNow;
         await _userRepository.UpdateSaleCommissionConsentAsync(id, now);
         user.SaleCommissionConsentAtUtc = now;
-        return MapToDto(user);
+        return _mapper.Map<UserDto>(user);
     }
 
     public async Task<UserDto> UpdateProfileAsync(string id, UserProfileUpdateDto dto)
@@ -140,7 +143,7 @@ public class UserService : IUserService
             try { await _calls.CallWelcomeAsync(user); } catch { }
         }
 
-        return MapToDto(user);
+        return _mapper.Map<UserDto>(user);
     }
 
     public async Task<UserPayoutInfoDto> GetPayoutAsync(string id)
@@ -182,26 +185,6 @@ public class UserService : IUserService
     {
         await _userRepository.DeleteAsync(id);
     }
-
-    private static UserDto MapToDto(User user) => new()
-    {
-        Id = user.Id ?? string.Empty,
-        Name = user.Name,
-        Email = user.Email,
-        Phone = user.Phone,
-        Role = user.Role.ToString(),
-        Address = user.Address,
-        City = user.City,
-        AddressNotes = user.AddressNotes,
-        AddressFloor = user.AddressFloor,
-        AddressApartment = user.AddressApartment,
-        CommissionConsentAtUtc = user.CommissionConsentAtUtc,
-        SaleCommissionConsentAtUtc = user.SaleCommissionConsentAtUtc,
-        CreatedAtUtc = user.CreatedAtUtc,
-        QuietHoursEnabled = user.QuietHoursEnabled,
-        QuietFrom = user.QuietFrom ?? QuietHours.DefaultFrom,
-        QuietTo = user.QuietTo ?? QuietHours.DefaultTo
-    };
 
     internal static UserPayoutInfoDto MapToPayoutDto(User user) => new()
     {

@@ -1,4 +1,4 @@
-﻿namespace PhotoRental.Core.Interfaces;
+namespace PhotoRental.Core.Interfaces;
 
 using PhotoRental.Core.Entities;
 using PhotoRental.Core.Enums;
@@ -11,7 +11,9 @@ public interface ILoanRepository
     Task<IReadOnlyList<Loan>> GetActiveLoansForItemAsync(string itemId);
     Task<IReadOnlyList<Loan>> GetByBorrowerIdAsync(string borrowerId);
     Task<Loan> CreateAsync(Loan loan);
-    Task UpdateStatusAsync(string id, LoanStatus status, DateTime? actualReturnDate = null, string? returnedBy = null);
+    Task<Loan> CreateWithItemCheckAsync(Loan loan, Item item, CancellationToken ct = default);
+    Task<IReadOnlyList<Loan>> CreateWithItemCheckAsync(IReadOnlyList<(Loan Loan, Item Item)> bookings, CancellationToken ct = default);
+    Task UpdateStatusAsync(string id, LoanStatus status, DateTime? actualReturnDate = null);
     Task UpdatePaymentStatusAsync(string id, PaymentStatus status);
     Task UpdateReturnReminderSentAsync(string id, DateTime sentAtUtc);
     Task UpdateLateDaysAsync(string id, int lateDays);

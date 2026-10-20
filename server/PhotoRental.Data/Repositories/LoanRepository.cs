@@ -1,4 +1,4 @@
-﻿namespace PhotoRental.Data.Repositories;
+namespace PhotoRental.Data.Repositories;
 
 using System.Text.Json.Nodes;
 using PhotoRental.Core.Entities;
@@ -75,7 +75,41 @@ public class LoanRepository : ILoanRepository
         return loan;
     }
 
-    public async Task UpdateStatusAsync(string id, LoanStatus status, DateTime? actualReturnDate = null, string? returnedBy = null)
+    // יוצר את ההשכרות ומעלה את גרסת הפריטים באותה פעולה אטומית, בתנאי שאף פריט לא השתנה מאז שנקרא.
+    // אם מישהי אחרת השכירה אחד הפריטים בינתיים - נזרקת ConcurrencyConflictException ושום דבר לא נשמר
+    public async Task<Loan> CreateWithItemCheckAsync(Loan loan, Item item, CancellationToken ct = default) =>
+        (await CreateWithItemCheckAsync(new[] { (loan, item) }, ct))[0];
+
+    public async Task<IReadOnlyList<Loan>> CreateWithItemCheckAsync(IReadOnlyList<(Loan Loan, Item Item)> bookings, CancellationToken ct = default)
+    {
+        var writes = new List<JsonObject>();
+        var ids = new List<string>();
+
+        foreach (var (loan, item) in bookings)
+        {
+            if (string.IsNullOrEmpty(item.Id) || string.IsNullOrEmpty(item.ConcurrencyToken))
+                throw new InvalidOperationException("הפריט נטען בלי concurrency token");
+
+            var loanId = FirebaseDbContext.NewDocumentId();
+            ids.Add(loanId);
+            writes.Add(_firebase.CreateWrite(CollectionName, loanId, ToFields(loan)));
+            writes.Add(_firebase.GuardedPatchWrite("Items", item.Id,
+                new JsonObject { [nameof(Item.Version)] = FirestoreJson.IntegerField(item.Version + 1) },
+                item.ConcurrencyToken));
+        }
+
+        await _firebase.CommitAsync(writes, bookings[0].Item.Id, ct);
+
+        for (var i = 0; i < bookings.Count; i++)
+        {
+            bookings[i].Loan.Id = ids[i];
+            bookings[i].Item.Version++;
+        }
+
+        return bookings.Select(b => b.Loan).ToList();
+    }
+
+    public async Task UpdateStatusAsync(string id, LoanStatus status, DateTime? actualReturnDate = null)
     {
         var fields = new JsonObject
         {
@@ -88,12 +122,6 @@ public class LoanRepository : ILoanRepository
         {
             fields[nameof(Loan.ActualReturnDate)] = FirestoreJson.TimestampField(actualReturnDate.Value);
             fieldPaths.Add(nameof(Loan.ActualReturnDate));
-        }
-
-        if (!string.IsNullOrEmpty(returnedBy))
-        {
-            fields[nameof(Loan.ReturnedBy)] = FirestoreJson.StringField(returnedBy);
-            fieldPaths.Add(nameof(Loan.ReturnedBy));
         }
 
         await _firebase.PatchDocumentFieldsAsync(CollectionName, id, fields, fieldPaths);
@@ -295,7 +323,6 @@ public class LoanRepository : ILoanRepository
             [nameof(Loan.CommissionRate)] = FirestoreJson.DoubleOrNullField(loan.CommissionRate.HasValue ? (double)loan.CommissionRate.Value : null),
             [nameof(Loan.ExpectedReturnDate)] = FirestoreJson.TimestampField(loan.ExpectedReturnDate),
             [nameof(Loan.ActualReturnDate)] = FirestoreJson.TimestampOrNullField(loan.ActualReturnDate),
-            [nameof(Loan.ReturnedBy)] = FirestoreJson.StringOrNullField(loan.ReturnedBy),
             [nameof(Loan.Status)] = FirestoreJson.StringField(loan.Status.ToString()),
             [nameof(Loan.DeliveryMethod)] = FirestoreJson.StringField(loan.DeliveryMethod.ToString()),
             [nameof(Loan.ExpressDelivery)] = FirestoreJson.BooleanField(loan.ExpressDelivery),
@@ -362,7 +389,6 @@ public class LoanRepository : ILoanRepository
             CommissionRate = FirestoreJson.GetDoubleOrNull(fields, nameof(Loan.CommissionRate)) is double commissionRate ? (decimal)commissionRate : null,
             ExpectedReturnDate = FirestoreJson.GetTimestamp(fields, nameof(Loan.ExpectedReturnDate)),
             ActualReturnDate = FirestoreJson.GetTimestampOrNull(fields, nameof(Loan.ActualReturnDate)),
-            ReturnedBy = FirestoreJson.GetStringOrNull(fields, nameof(Loan.ReturnedBy)),
             Status = FirestoreJson.GetEnum(fields, nameof(Loan.Status), LoanStatus.Active),
             DeliveryMethod = FirestoreJson.GetEnum(fields, nameof(Loan.DeliveryMethod), DeliveryMethod.SelfPickup),
             ExpressDelivery = FirestoreJson.GetBool(fields, nameof(Loan.ExpressDelivery)),

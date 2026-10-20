@@ -32,14 +32,10 @@ public static class CallTwiml
         Say("לא התקבלה תגובה. להתראות.") +
         "</Response>";
 
-    public static string Bridge(string intro, string numberE164, string callerId, string doneUrl, string? whisperUrl = null) =>
+    public static string Bridge(string intro, string numberE164, string callerId, string doneUrl) =>
         Header + Say(intro) +
         $"<Dial callerId=\"{SecurityElement.Escape(callerId)}\" timeout=\"25\" timeLimit=\"600\" answerOnBridge=\"true\" action=\"{SecurityElement.Escape(doneUrl)}\" method=\"POST\">" +
-        (whisperUrl is null ? "<Number>" : $"<Number url=\"{SecurityElement.Escape(whisperUrl)}\" method=\"POST\">") +
-        $"{SecurityElement.Escape(numberE164)}</Number></Dial></Response>";
-
-    // הודעה שמושמעת רק לצד שמקבל את השיחה, לפני החיבור
-    public static string Whisper(string message) => Header + Say(message) + "</Response>";
+        $"<Number>{SecurityElement.Escape(numberE164)}</Number></Dial></Response>";
 
     // מוסיף הקראה לפני שאר הוראות השיחה (למשל השמעת הודעה שלא נשמעה, ואז התפריט הרגיל)
     public static string Prepend(string message, string twiml) =>

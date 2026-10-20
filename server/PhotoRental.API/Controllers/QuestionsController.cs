@@ -210,7 +210,7 @@ public class QuestionsController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("{id}")]
-    public async Task<IActionResult> Get(string id, [FromQuery] string? t)
+    public async Task<IActionResult> Get([FromRoute] string id, [FromQuery] string? t)
     {
         var (thread, role) = await ResolveAsync(id, t);
         if (thread is null || role is null)
@@ -243,8 +243,8 @@ public class QuestionsController : ControllerBase
 
     // הודעת מערכת מהנהלת האתר בתוך ההתכתבות - נשלח מייל לשתיהן
     [Authorize(Roles = "Admin")]
-    [HttpPost("{id}/admin-message")]
-    public async Task<IActionResult> AdminMessage(string id, [FromBody] AdminMessageDto dto)
+    [HttpPost("{id}/admin-messages")]
+    public async Task<IActionResult> AdminMessage([FromRoute] string id, [FromBody] AdminMessageDto dto)
     {
         var thread = await _questions.GetByIdAsync(id);
         if (thread is null)
@@ -265,7 +265,7 @@ public class QuestionsController : ControllerBase
     // תמונה מההתכתבות - טעינת תמונה רגילה עם הקישור האישי (כמו תמונה במייל), לא מקישור ציבורי
     [AllowAnonymous]
     [HttpGet("{id}/images/{imageId}")]
-    public async Task<IActionResult> Image(string id, string imageId, [FromQuery] string? t)
+    public async Task<IActionResult> Image([FromRoute] string id, [FromRoute] string imageId, [FromQuery] string? t)
     {
         var (thread, role) = await ResolveAsync(id, t);
         if (thread is null || role is null)
@@ -282,7 +282,7 @@ public class QuestionsController : ControllerBase
 
     [AllowAnonymous]
     [HttpPost("{id}/messages")]
-    public async Task<IActionResult> Reply(string id, [FromQuery] string? t, [FromBody] TextDto dto)
+    public async Task<IActionResult> Reply([FromRoute] string id, [FromQuery] string? t, [FromBody] TextDto dto)
     {
         var (thread, role) = await ResolveAsync(id, t);
         if (thread is null || role is null)

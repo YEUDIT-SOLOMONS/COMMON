@@ -1495,7 +1495,6 @@ p {
 }
 
 .item-price {
-  white-space: nowrap;
   font-family: var(--sans);
   font-size: calc(11.1 * var(--p));
   font-weight: 700;

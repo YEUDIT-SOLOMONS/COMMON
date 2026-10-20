@@ -5,10 +5,11 @@ using PhotoRental.Core.DTOs;
 public interface IItemService
 {
     Task<IReadOnlyList<ItemDto>> GetAllAsync();
+    Task<PagedResultDto<ItemDto>> GetPageAsync(ItemPageQueryDto query, CancellationToken ct = default);
 
     // "פנוי בתאריכים שלי": מזהי הפריטים שתפוסים (השכרה פעילה/עתידית או בתחזוקה) בטווח התאריכים, כולל
     Task<IReadOnlyList<string>> GetBusyItemIdsAsync(DateTime from, DateTime to);
-    Task<ItemDto?> GetByIdAsync(string id);
+    Task<ItemDto?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<IReadOnlyList<ItemDto>> GetByCategoryAsync(string categoryId);
     Task<IReadOnlyList<ItemDto>> GetByOwnerAsync(string ownerId);
     Task<ItemDto> CreateAsync(ItemCreateDto dto);

@@ -1,11 +1,16 @@
 namespace PhotoRental.Core.DTOs;
 
+using System.ComponentModel.DataAnnotations;
+
 public class ReviewSubmitDto
 {
+    [Range(1, 5, ErrorMessage = "הדירוג חייב להיות בין 1 ל-5")]
     public int Stars { get; set; }
+    [StringLength(2000)]
     public string? Text { get; set; }
 
     // מילה טובה מהשוכרת למשכירה - נשלחת אליה בלבד, לא מוצגת לציבור
+    [StringLength(1000)]
     public string? ThankYouNote { get; set; }
 }
 

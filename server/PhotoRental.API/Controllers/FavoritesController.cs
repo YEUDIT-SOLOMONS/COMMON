@@ -28,7 +28,7 @@ public class FavoritesController : ControllerBase
     }
 
     [HttpPut("{itemId}")]
-    public async Task<IActionResult> Update(string itemId, [FromBody] FavoriteUpdateDto dto)
+    public async Task<IActionResult> Update([FromRoute] string itemId, [FromBody] FavoriteUpdateDto dto)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();

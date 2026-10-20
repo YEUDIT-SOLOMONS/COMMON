@@ -10,7 +10,7 @@ namespace PhotoRental.API.Controllers;
 // ואחרי התשלום סאמיט מחזירה לעמוד "התשלום התקבל" (confirm) שמאמת מול סאמיט וסומן את הדוח כשולם.
 // בלי התחברות: start מוגן בטוקן הסודי של הדוח (?t=...), ו-confirm מאומת בבדיקה בין שרת לשרת מול סאמיט.
 [ApiController]
-[Route("api/commission-pay")]
+[Route("api/commission-payments")]
 [AllowAnonymous]
 public class CommissionPayController : ControllerBase
 {
@@ -21,7 +21,7 @@ public class CommissionPayController : ControllerBase
         _commissionService = commissionService;
     }
 
-    [HttpPost("start")]
+    [HttpPost]
     public async Task<IActionResult> Start([FromQuery(Name = "o")] string ownerId, [FromQuery(Name = "m")] string month, [FromQuery(Name = "t")] string? token, [FromQuery] bool consent = false)
     {
         try
@@ -36,14 +36,14 @@ public class CommissionPayController : ControllerBase
     }
 
     [EnableRateLimiting("contact")]
-    [HttpPost("email")]
+    [HttpPost("emails")]
     public async Task<IActionResult> Email([FromQuery(Name = "o")] string ownerId, [FromQuery(Name = "m")] string month, [FromQuery(Name = "t")] string? token)
     {
         var sent = await _commissionService.ResendReportAsync(ownerId, month, token);
         return sent ? Ok(new { Sent = true }) : NotFound(new { Message = "הקישור אינו תקף" });
     }
 
-    [HttpPost("confirm")]
+    [HttpPost("confirmation")]
     public async Task<IActionResult> Confirm([FromBody] CommissionCardConfirmDto dto)
     {
         return Ok(await _commissionService.ConfirmCardPaymentAsync(dto));

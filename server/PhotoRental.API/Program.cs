@@ -16,26 +16,16 @@ using PhotoRental.Data;
 using PhotoRental.Data.Repositories;
 using PhotoRental.Service.Seeding;
 using PhotoRental.Service.Services;
-using Serilog;
+using NLog;
+using NLog.Web;
 
-// ===================== יומן רישום (Logging) - Serilog =====================
-// לוגר "אתחול" (Bootstrap Logger) שפעיל עוד לפני שהאפליקציה עלתה במלואה, כדי שגם שגיאות
-// שקורות בזמן בניית ה-builder/services (למשל תצורה חסרה) יירשמו ליומן ולא רק יוצגו כקריסה
-// שקטה בקונסולה. נכתב גם לקונסולה וגם לקובץ מתגלגל יומי בתיקיית Logs/, כדי שכל שגיאה תהיה
-// ניתנת לאיתור גם אחרי שהחלון נסגר.
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
-    .Enrich.FromLogContext()
-    .WriteTo.Console()
-    .WriteTo.File(
-        Path.Combine(AppContext.BaseDirectory, "Logs", "photorental-.log"),
-        rollingInterval: RollingInterval.Day,
-        retainedFileCountLimit: 14)
-    .CreateBootstrapLogger();
+// ===================== יומן רישום (Logging) - NLog =====================
+// ההגדרות ב-nlog.config. הקוד עצמו משתמש ב-ILogger הרגיל של .NET, ו-NLog מתחבר מתחת
+var logger = LogManager.Setup().LoadConfigurationFromFile(Path.Combine(AppContext.BaseDirectory, "nlog.config")).GetCurrentClassLogger();
 
 try
 {
-    Log.Information("PhotoRental.API עולה...");
+    logger.Info("PhotoRental.API עולה...");
 
     // עקיפת פרוקסי המערכת בררת המחדל: השגיאה "Unable to establish HTTP/2 connection" מול Firestore
     // נגרמת כמעט תמיד מפרוקסי מקומי (למשל תוכנת אנטי-וירוס עם סריקת HTTPS, VPN, או פרוקסי ארגוני)
@@ -45,32 +35,24 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // חיבור Serilog כספק הלוגים הרשמי של האפליקציה (במקום/בנוסף ללוגר המובנה של ASP.NET Core),
-    // כולל קריאת הגדרות נוספות מ-appsettings.json (מקטע "Serilog", אם קיים).
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console()
-        .WriteTo.File(
-            Path.Combine(AppContext.BaseDirectory, "Logs", "photorental-.log"),
-            rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 14));
+    builder.Logging.ClearProviders();
+    builder.Host.UseNLog();
 
     // טעינת הגדרות החיבור ל-Firebase ואימות שהן קיימות
     var firebaseProjectId = builder.Configuration["Firebase:ProjectId"];
     var firebaseCredentialsPath = builder.Configuration["Firebase:CredentialsPath"];
+    // בפיתוח מקומי עובדים מול Firestore Emulator (למשל http://localhost:8080) - בלי קובץ מפתח ובלי ענן
+    var firebaseEmulatorHost = builder.Configuration["Firebase:EmulatorHost"];
+    var useEmulator = !string.IsNullOrWhiteSpace(firebaseEmulatorHost);
 
-    if (string.IsNullOrEmpty(firebaseProjectId) || string.IsNullOrEmpty(firebaseCredentialsPath))
+    if (string.IsNullOrEmpty(firebaseProjectId) || (!useEmulator && string.IsNullOrEmpty(firebaseCredentialsPath)))
     {
         throw new InvalidOperationException("Missing Firebase configuration in appsettings or User Secrets.");
     }
 
-    // אם הנתיב לקובץ המפתח יחסי - נהפוך אותו לנתיב מוחלט ביחס לתיקיית הפרויקט,
-    // כדי שהאפליקציה תמצא אותו נכון בכל סביבת הרצה (IDE, קובץ הרצה עצמאי, שרת IIS וכו')
-    if (!Path.IsPathRooted(firebaseCredentialsPath))
+    if (!useEmulator && !Path.IsPathRooted(firebaseCredentialsPath))
     {
-        firebaseCredentialsPath = Path.Combine(builder.Environment.ContentRootPath, firebaseCredentialsPath);
+        firebaseCredentialsPath = Path.Combine(builder.Environment.ContentRootPath, firebaseCredentialsPath!);
     }
 
     // ===================== רישום שירותי הזרקת התלויות (Dependency Injection) =====================
@@ -79,7 +61,9 @@ try
     // החיבור נוצר באופן עצל (רק כשמגיעה בקשת API ראשונה שזקוקה לו) ולא כאן בעליית האפליקציה -
     // כדי שבעיית התחברות ל-Firebase לא תפיל את כל השרת (מה שמונע מ-Swagger לעלות בכלל),
     // אלא תוצג כתשובת שגיאה מפורטת וברורה בבקשה עצמה (דרך ה-Middleware הגלובלי), הניתנת לצפייה בדפדפן.
-    builder.Services.AddSingleton(_ => new FirebaseDbContext(firebaseProjectId, firebaseCredentialsPath));
+    builder.Services.AddSingleton(_ => useEmulator
+        ? new FirebaseDbContext(firebaseProjectId, new Uri(firebaseEmulatorHost!.StartsWith("http") ? firebaseEmulatorHost : $"http://{firebaseEmulatorHost}"))
+        : new FirebaseDbContext(firebaseProjectId, firebaseCredentialsPath!));
 
     // הצפנת מספרי חשבון הבנק של המשכירים במסד הנתונים (חוק הגנת הפרטיות / תקנות אבטחת מידע) -
     // ר' הערה מפורטת ב-FieldEncryptor. המפתח מגיע ממשתנה הסביבה Encryption__PayoutKey (ב-Cloud Run)
@@ -87,7 +71,7 @@ try
     var payoutEncryptor = new FieldEncryptor(builder.Configuration["Encryption:PayoutKey"]);
     if (!payoutEncryptor.IsEnabled)
     {
-        Log.Warning("Encryption:PayoutKey לא הוגדר - מספרי חשבון הבנק נשמרים ללא הצפנה. יש להגדיר מפתח בהקדם.");
+        logger.Warn("Encryption:PayoutKey לא הוגדר - מספרי חשבון הבנק נשמרים ללא הצפנה. יש להגדיר מפתח בהקדם.");
     }
     builder.Services.AddSingleton(payoutEncryptor);
     builder.Services.AddHostedService<PayoutEncryptionMigrationService>();
@@ -100,6 +84,14 @@ try
     builder.Services.AddScoped<IContactMessageRepository, ContactMessageRepository>();
 
     // שכבת הלוגיקה העסקית (Services)
+    builder.Services.AddAutoMapper(cfg => cfg.LicenseKey = builder.Configuration["AutoMapper:LicenseKey"], typeof(PhotoRental.Service.Mapping.MappingProfile));
+
+    // migrations של נתונים (המקבילה של EF Migrations) - רצות בעליית השרת, כל אחת פעם אחת
+    builder.Services.AddSingleton<PhotoRental.Data.Migrations.IDataMigration, PhotoRental.Data.Migrations.M0001_BackfillItemQueryFields>();
+    builder.Services.AddSingleton<PhotoRental.Data.Migrations.IDataMigration, PhotoRental.Data.Migrations.M0002_AddItemVersion>();
+    builder.Services.AddSingleton<PhotoRental.Data.Migrations.DataMigrationRunner>();
+    builder.Services.AddScoped<DemoDataSeeder>();
+
     builder.Services.AddScoped<IItemService, ItemService>();
     builder.Services.AddScoped<ICategoryService, CategoryService>();
     builder.Services.AddScoped<IAdminService, AdminService>();
@@ -318,13 +310,23 @@ try
     // הנפקת הטוקן עצמה (JwtTokenGenerator) נמצאת בשכבת ה-API, אך פרמטרי האימות (מפתח/מנפיק/קהל יעד)
     // חייבים להיות זהים בין ההנפקה (למטה) לבין ה-Middleware שמאמת את הטוקן בכל בקשה (AddJwtBearer),
     // ולכן שניהם נטענים כאן מאותו מקור הגדרות (appsettings.json -> Jwt).
-    var jwtKey = builder.Configuration["Jwt:Key"];
-    var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PhotoRentalAPI";
-    var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "PhotoRentalClient";
-
-    if (string.IsNullOrWhiteSpace(jwtKey))
+    // המפתח לא נמצא באף קובץ ב-repo: בפיתוח - User Secrets, בייצור - משתנה סביבה Jwt__Key.
+    // אם לא הוגדר בפיתוח, נוצר מפתח זמני כדי שהפרויקט ירוץ מיד (טוקנים יפוגו באתחול הבא)
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Jwt:Key"]) && builder.Environment.IsDevelopment())
     {
-        throw new InvalidOperationException("Missing Jwt:Key configuration in appsettings.json.");
+        builder.Configuration["Jwt:Key"] = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(64));
+        logger.Warn("Jwt:Key לא הוגדר ב-User Secrets - נוצר מפתח זמני לפיתוח");
+    }
+
+    builder.Services.AddOptions<JwtOptions>()
+        .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+        .Validate(o => o.Key.Length >= 32, "Jwt:Key חייב להיות באורך 32 תווים לפחות")
+        .ValidateOnStart();
+
+    var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+    if (string.IsNullOrWhiteSpace(jwtOptions.Key))
+    {
+        throw new InvalidOperationException("Missing Jwt:Key configuration (User Secrets or environment variable Jwt__Key).");
     }
 
     builder.Services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -336,11 +338,11 @@ try
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = jwtIssuer,
+                ValidIssuer = jwtOptions.Issuer,
                 ValidateAudience = true,
-                ValidAudience = jwtAudience,
+                ValidAudience = jwtOptions.Audience,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(1)
             };
@@ -373,18 +375,27 @@ try
         });
     });
 
-    // דחיסת תשובות (הקטלוג המלא ~400KB של JSON יורד לחלק קטן מזה)
-    builder.Services.AddResponseCompression(options =>
-    {
-        options.EnableForHttps = true;
-        options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
-        options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
-    });
-    builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
-    builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
-
     builder.Services
-        .AddControllers()
+        .AddControllers(options => options.Filters.Add<PhotoRental.API.Middlewares.UniformErrorResultFilter>())
+        .ConfigureApiBehaviorOptions(options =>
+        {
+            // ModelState לא תקין (Data Annotations על ה-DTO) -> 400 באותו מבנה JSON של שאר השגיאות
+            options.InvalidModelStateResponseFactory = context =>
+            {
+                var errors = context.ModelState
+                    .Where(e => e.Value?.Errors.Count > 0)
+                    .ToDictionary(e => e.Key, e => e.Value!.Errors.Select(x => x.ErrorMessage).ToArray());
+                var first = errors.Values.SelectMany(v => v).FirstOrDefault(m => !string.IsNullOrWhiteSpace(m));
+
+                return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
+                {
+                    StatusCode = 400,
+                    Message = first ?? "הבקשה אינה תקינה",
+                    Errors = errors,
+                    CorrelationId = context.HttpContext.GetCorrelationId()
+                });
+            };
+        })
         .AddJsonOptions(options =>
         {
             // הצגת ערכי Enum כטקסט קריא ב-JSON (למשל "Available" ולא 0),
@@ -445,13 +456,11 @@ try
 
     // ===================== צנרת הבקשות (Middleware Pipeline) =====================
 
-    // רישום אוטומטי ליומן של כל בקשת HTTP (נתיב, קוד תשובה, זמן טיפול) - בנוסף לרישום המפורט
-    // של שגיאות ב-GlobalExceptionMiddleware, כדי שגם בקשות שהצליחו יהיו ניתנות למעקב.
-    app.UseSerilogRequestLogging();
-    app.UseResponseCompression();
-
     // טיפול גלובלי ומרוכז בשגיאות - חייב להיות הראשון בצנרת כדי לתפוס חריגות מכל שלב שאחריו
     app.UseGlobalExceptionHandling();
+
+    // CorrelationId לכל בקשה + שורת לוג לכל בקשה נכנסת
+    app.UseCorrelationId();
 
     // חשיפת Swagger UI בסביבת פיתוח בלבד, לצורך בדיקה נוחה של כל ה-API מהדפדפן
     if (app.Environment.IsDevelopment())
@@ -480,21 +489,25 @@ try
 
     app.MapControllers();
 
-    // זריעת רשימת הקטגוריות הקבועה ברקע (Fire-and-forget), ללא חסימת עליית השרת: אם Firebase
-    // לא זמין כרגע, הזריעה תיכשל בשקט ותירשם ליומן כאזהרה, אבל Swagger ושאר ה-API ימשיכו
-    // לעלות כרגיל - אותו עיקרון בדיוק שבגללו FirebaseDbContext נבנה באופן "עצל" (למעלה).
+    // migrations ואז זריעה: קטגוריות תמיד, נתוני דמו רק כש-Seed:DemoData=true. רץ ברקע כדי שתקלה
+    // בבסיס הנתונים לא תמנע מ-Swagger לעלות
+    var seedDemoData = app.Configuration.GetValue<bool>("Seed:DemoData");
     _ = Task.Run(async () =>
     {
         try
         {
+            var ran = await app.Services.GetRequiredService<PhotoRental.Data.Migrations.DataMigrationRunner>().MigrateAsync();
+            app.Logger.LogInformation("Migrations: {Count} חדשות ({Ids})", ran.Count, string.Join(", ", ran));
+
             using var scope = app.Services.CreateScope();
-            var categoryRepository = scope.ServiceProvider.GetRequiredService<ICategoryRepository>();
-            await new CategorySeeder(categoryRepository).SeedAsync();
-            Log.Information("זריעת רשימת הקטגוריות הקבועה הושלמה בהצלחה");
+            await new CategorySeeder(scope.ServiceProvider.GetRequiredService<ICategoryRepository>()).SeedAsync();
+
+            if (seedDemoData && await scope.ServiceProvider.GetRequiredService<DemoDataSeeder>().SeedAsync())
+                app.Logger.LogInformation("נזרעו נתוני דמו (משתמשות ופריטים)");
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "זריעת רשימת הקטגוריות הקבועה נכשלה - ניתן לנסות שוב באתחול הבא של השרת");
+            app.Logger.LogError(ex, "migrations או זריעת נתונים נכשלו - ניתן לנסות שוב באתחול הבא של השרת");
         }
     });
 
@@ -502,10 +515,12 @@ try
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "PhotoRental.API נכשל בעליה");
+    logger.Fatal(ex, "PhotoRental.API נכשל בעליה");
     throw;
 }
 finally
 {
-    Log.CloseAndFlush();
+    LogManager.Shutdown();
 }
+
+public partial class Program;

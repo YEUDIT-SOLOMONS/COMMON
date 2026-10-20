@@ -27,7 +27,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Register([FromBody] RegisterDto dto)
     {
         var user = await _authService.RegisterAsync(dto);
-        return Ok(BuildResponse(user));
+        return Created($"/api/users/{user.Id}", BuildResponse(user));
     }
 
     // התחברות משתמש קיים באמצעות אימייל וסיסמה

@@ -616,7 +616,7 @@ export function AddItemModal({ categoryId = '', categories = [], ownerId, onClos
               <label className="checkbox-row commission-consent">
                 <input type="checkbox" checked={saleConsentChecked} onChange={(e) => setSaleConsentChecked(e.target.checked)} required />
                 <span>
-                  ההעלאה חינם. אם הפריט נמכר דרך COMMON, אני מאשרת עמלת שירות של 6% מסכום המכירה.{' '}
+                  ההעלאה חינם. אם הפריט נמכר דרך COMMON, אני מאשרת עמלת שירות של 5% מסכום המכירה.{' '}
                   <a href="/terms#yad2" target="_blank" rel="noreferrer">
                     לתנאים
                   </a>

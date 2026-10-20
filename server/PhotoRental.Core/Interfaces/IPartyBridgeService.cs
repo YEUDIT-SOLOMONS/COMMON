@@ -13,8 +13,4 @@ public interface IPartyBridgeService
     Task<string> HandleSelectionAsync(string fromPhone, string digits);
 
     Task<string> CompleteAsync(string logId, string dialStatus, int durationSeconds);
-
-    Task<string> WhisperAsync(string logId);
-
-    Task CallbackFromLinkAsync(string logId, string token);
 }

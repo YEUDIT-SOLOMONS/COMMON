@@ -15,10 +15,10 @@ export const authApi = {
 // "חלון הסימון" של המשכירה (קישור במייל, בלי התחברות): הטוקן הסודי t נשלח בכל בקשה
 export const loanActionsApi = {
   get: (id, t) => api.get(`/loan-actions/${id}?t=${encodeURIComponent(t)}`),
-  pickedUp: (id, t) => api.post(`/loan-actions/${id}/picked-up?t=${encodeURIComponent(t)}`),
-  returned: (id, t) => api.post(`/loan-actions/${id}/returned?t=${encodeURIComponent(t)}`),
-  notReturned: (id, t) => api.post(`/loan-actions/${id}/not-returned?t=${encodeURIComponent(t)}`),
-  paymentReceived: (id, t) => api.post(`/loan-actions/${id}/payment-received?t=${encodeURIComponent(t)}`),
+  pickedUp: (id, t) => api.post(`/loan-actions/${id}/pickup?t=${encodeURIComponent(t)}`),
+  returned: (id, t) => api.post(`/loan-actions/${id}/return-confirmation?t=${encodeURIComponent(t)}`),
+  notReturned: (id, t) => api.post(`/loan-actions/${id}/non-return-reports?t=${encodeURIComponent(t)}`),
+  paymentReceived: (id, t) => api.post(`/loan-actions/${id}/payment-confirmation?t=${encodeURIComponent(t)}`),
   proof: (id, t) => api.get(`/loan-actions/${id}/payment-proof?t=${encodeURIComponent(t)}`),
   extension: (id, t, a) => api.post(`/loan-actions/${id}/extension?t=${encodeURIComponent(t)}&a=${a}`),
 }
@@ -36,8 +36,8 @@ export const renterPickupApi = {
 // "חלון זמין / להסרה" של בעלת הפריט (קישורים במייל "הפריט לא הושכר 6 שבועות", בלי התחברות): הטוקן t נשלח בכל בקשה
 export const itemActionsApi = {
   get: (id, t) => api.get(`/item-actions/${id}?t=${encodeURIComponent(t)}`),
-  available: (id, t) => api.post(`/item-actions/${id}/available?t=${encodeURIComponent(t)}`),
-  remove: (id, t) => api.post(`/item-actions/${id}/remove?t=${encodeURIComponent(t)}`),
+  available: (id, t) => api.post(`/item-actions/${id}/availability-confirmation?t=${encodeURIComponent(t)}`),
+  remove: (id, t) => api.post(`/item-actions/${id}/removal?t=${encodeURIComponent(t)}`),
 }
 
 // "חלון העלאת אסמכתא" מהקישור במייל דוח העמלה החודשי (בלי התחברות): o=בעלים, m=חודש, t=טוקן סודי
@@ -50,23 +50,22 @@ export const commissionProofApi = {
 
 // תשלום עמלה באשראי (סאמיט): start יוצר דף תשלום חדש ומחזיר את כתובתו; confirm מאמת את התשלום אחרי החזרה
 export const commissionPayApi = {
-  start: (o, m, t, consent) => api.post(`/commission-pay/start?${proofQuery(o, m, t)}&consent=${consent ? 'true' : 'false'}`, {}),
-  confirm: (paymentId, externalIdentifier) => api.post('/commission-pay/confirm', { paymentId, externalIdentifier }),
-  email: (o, m, t) => api.post(`/commission-pay/email?${proofQuery(o, m, t)}`, {}),
+  start: (o, m, t, consent) => api.post(`/commission-payments?${proofQuery(o, m, t)}&consent=${consent ? 'true' : 'false'}`, {}),
+  confirm: (paymentId, externalIdentifier) => api.post('/commission-payments/confirmation', { paymentId, externalIdentifier }),
+  email: (o, m, t) => api.post(`/commission-payments/emails?${proofQuery(o, m, t)}`, {}),
 }
 
 // השלמת כתובות לפי מאגר היישובים והרחובות הרשמי
 export const shippingPayApi = {
-  status: () => api.get('/shipping-pay/status'),
+  status: () => api.get('/shipping-payments/status'),
   start: (amount, consent, draft) =>
-    api.post('/shipping-pay/start', { amount, consent, draft: draft ? JSON.stringify(draft.draft) : null, isBatch: Boolean(draft?.isBatch) }),
-  confirm: (paymentId, externalIdentifier) => api.post('/shipping-pay/confirm', { paymentId, externalIdentifier }),
+    api.post('/shipping-payments', { amount, consent, draft: draft ? JSON.stringify(draft.draft) : null, isBatch: Boolean(draft?.isBatch) }),
+  confirm: (paymentId, externalIdentifier) => api.post('/shipping-payments/confirmation', { paymentId, externalIdentifier }),
 }
 
 export const callsApi = {
   commonNumber: () => api.get('/calls/common-number'),
-  connect: (loanId) => api.post('/calls/connect', { loanId }),
-  callbackLink: (logId, token) => api.post('/calls/callback-link', { logId, token }),
+  connect: (loanId) => api.post('/calls/connections', { loanId }),
 }
 
 export const addressApi = {
@@ -77,18 +76,18 @@ export const addressApi = {
 export const adminApi = {
   overview: () => api.get('/admin/overview'),
   calls: () => api.get('/admin/calls'),
-  resendCall: (id) => api.post(`/admin/calls/${id}/resend`),
-  cancelCall: (id) => api.post(`/admin/calls/${id}/cancel`),
-  resendAvailability: (id, call, email) => api.post(`/admin/calls/${id}/availability-resend`, { call, email }),
+  resendCall: (id) => api.post(`/admin/calls/${id}/resends`),
+  cancelCall: (id) => api.post(`/admin/calls/${id}/cancellation`),
+  resendAvailability: (id, call, email) => api.post(`/admin/calls/${id}/availability-resends`, { call, email }),
   payouts: () => api.get('/admin/payouts'),
   markPayoutPaid: (ownerId, loanIds, proof) =>
-    api.post('/admin/payouts/mark-paid', { ownerId, loanIds, proofDataUrl: proof?.dataUrl, proofFileName: proof?.fileName }),
+    api.post('/admin/payouts/payments', { ownerId, loanIds, proofDataUrl: proof?.dataUrl, proofFileName: proof?.fileName }),
   payoutProof: (loanId) => api.get(`/admin/payouts/${loanId}/proof`),
   visits: () => api.get('/admin/visits'),
   neighborhoods: () => api.get('/admin/neighborhoods'),
   items: () => api.get('/admin/items'),
   questions: () => api.get('/admin/questions'),
-  adminQuestionMessage: (id, text) => api.post(`/questions/${id}/admin-message`, { text }),
+  adminQuestionMessage: (id, text) => api.post(`/questions/${id}/admin-messages`, { text }),
   editQuestionMessage: (id, index, text) => api.put(`/admin/questions/${id}/messages/${index}`, { text }),
   setItemCategory: (id, categoryId, extraCategoryId) =>
     api.put(`/admin/items/${id}/category`, { categoryId, extraCategoryId: extraCategoryId || null }),
@@ -105,7 +104,7 @@ export const commissionsApi = {
   adminOverview: (month) =>
     api.get(month ? `/commissions/admin?month=${encodeURIComponent(month)}` : '/commissions/admin'),
   adminSetPaid: (dto) => api.put('/commissions/admin/paid', dto),
-  adminSend: (dto) => api.post('/commissions/admin/send', dto),
+  adminSend: (dto) => api.post('/commissions/admin/notifications', dto),
   adminProof: (ownerId, month) =>
     api.get(`/commissions/admin/proof?ownerId=${encodeURIComponent(ownerId)}&month=${encodeURIComponent(month)}`),
   adminPreview: (ownerId, month) =>
@@ -142,8 +141,9 @@ export const usersApi = {
 export const itemsApi = {
   getAll: (categoryId) =>
     api.get(categoryId ? `/items?categoryId=${encodeURIComponent(categoryId)}` : '/items'),
-  firstPage: (take, forSale) => api.get(`/items?take=${take}&forSale=${forSale ? 'true' : 'false'}`),
   getByOwner: (ownerId) => api.get(`/items?ownerId=${encodeURIComponent(ownerId)}`),
+  getPage: ({ page, pageSize, categoryId, sort }) =>
+    api.get(`/items/page?${new URLSearchParams({ page, pageSize, sort, ...(categoryId ? { categoryId } : {}) })}`),
   // "פנוי בתאריכים שלי": מזהי הפריטים התפוסים בטווח
   busy: (from, to) => api.get(`/items/busy?from=${from}&to=${to}`, { auth: false }),
   cityCoords: (names) => api.get(`/cities/coords?names=${encodeURIComponent(names.join('|'))}`, { auth: false }),
@@ -182,19 +182,19 @@ export const loansApi = {
   // מסך "ההזמנה בוצעה": כל ההשכרות של אותה הזמנה
   getOrder: (id) => api.get(`/loans/${id}/order`),
   // "התחרטתי": שינוי אופן ההחזרה באמצע ההשכרה { returnMethod, returnPickupAddress }
-  changeReturnMethod: (id, dto) => api.post(`/loans/${id}/return-method`, dto),
+  changeReturnMethod: (id, dto) => api.put(`/loans/${id}/return-method`, dto),
   getByUser: (userId, limit) => api.get(`/loans/user/${userId}${limit ? `?limit=${limit}` : ''}`),
   // הצעת מחיר משלוח אמיתית (רגיל/אקספרס) לכתובת מסירה נתונה - נקרא לפני אימות הזמינות כדי להציג
   // ללקוח את המחיר האמיתי (ראו RentModal.jsx)
-  getShippingQuote: (dto) => api.post('/loans/shipping-quote', dto),
+  getShippingQuote: (dto) => api.post('/loans/shipping-quotes', dto),
   create: (dto) => api.post('/loans', dto),
   // פתיחת הזמנה אחת עם כמה פריטים מאותו חבר קהילה (משכיר) בבת אחת - עלות משלוח/שילוח נספרים פעם אחת בלבד
   createBatch: (dto) => api.post('/loans/batch', dto),
-  return: (id) => api.post(`/loans/${id}/return`),
-  cancel: (id) => api.post(`/loans/${id}/cancel`),
-  markPickedUp: (id) => api.post(`/loans/${id}/picked-up`),
+  return: (id) => api.post(`/loans/${id}/return-confirmation`),
+  cancel: (id) => api.post(`/loans/${id}/cancellation`),
+  markPickedUp: (id) => api.post(`/loans/${id}/pickup`),
   // אישור קבלת תשלום ידני (מזומן/העברה בנקאית) ע"י המשכיר - פותח את חשיפת פרטי הקשר שלו לשוכר
-  confirmPayment: (id) => api.post(`/loans/${id}/confirm-payment`),
+  confirmPayment: (id) => api.post(`/loans/${id}/payment-confirmation`),
 }
 
 // שיחות אימות זמינות מדומות (IVR) - ראו הערה מפורטת בשרת ב-SimulatedAvailabilityCallService
@@ -203,34 +203,34 @@ export const availabilityCallsApi = {
   recent: (itemId, details = {}) => api.post('/availabilitycalls/recent', { itemId, ...details }),
   getStatus: (callId) => api.get(`/availabilitycalls/${callId}`),
   // הדמיית לחיצת המשכיר על הטלפון: digit=1 (פנוי) / digit=2 (תפוס)
-  respond: (callId, digit) => api.post(`/availabilitycalls/${callId}/respond`, { digit }),
+  respond: (callId, digit) => api.post(`/availabilitycalls/${callId}/responses`, { digit }),
   request: (requestId) => api.get(`/availabilitycalls/requests/${requestId}`),
   mine: () => api.get('/availabilitycalls/mine'),
-  cancelRequest: (requestId) => api.post(`/availabilitycalls/requests/${requestId}/cancel`),
-  retryLater: (callId, notify) => api.post(`/availabilitycalls/${callId}/retry-later${notify ? `?notify=${notify}` : ''}`),
+  cancelRequest: (requestId) => api.post(`/availabilitycalls/requests/${requestId}/cancellation`),
+  retryLater: (callId, notify) => api.post(`/availabilitycalls/${callId}/retries${notify ? `?notify=${notify}` : ''}`),
   cancelRetry: (retryId) => api.del(`/availabilitycalls/retries/${retryId}`),
 }
 
 // סליקת אשראי מדומה מול UPAY - ראו הערה מפורטת בשרת ב-SimulatedUpayPaymentService
 export const salesApi = {
-  quote: (itemId, deliveryAddress) => api.post('/sales/quote', { itemId, deliveryAddress }),
+  quote: (itemId, deliveryAddress) => api.post('/sales/quotes', { itemId, deliveryAddress }),
   mine: () => api.get('/sales/mine'),
   create: (dto) => api.post('/sales', dto),
   get: (id, token) => api.get(`/sales/${id}${token ? `?t=${encodeURIComponent(token)}` : ''}`),
   handed: (id, token, delivered) =>
-    api.post(`/sales/${id}/handed?${token ? `t=${encodeURIComponent(token)}&` : ''}delivered=${delivered ? 'true' : 'false'}`),
-  received: (id, token) => api.post(`/sales/${id}/received${token ? `?t=${encodeURIComponent(token)}` : ''}`),
-  problem: (id, token, text) => api.post(`/sales/${id}/problem${token ? `?t=${encodeURIComponent(token)}` : ''}`, { text }),
+    api.post(`/sales/${id}/handover?${token ? `t=${encodeURIComponent(token)}&` : ''}delivered=${delivered ? 'true' : 'false'}`),
+  received: (id, token) => api.post(`/sales/${id}/receipt${token ? `?t=${encodeURIComponent(token)}` : ''}`),
+  problem: (id, token, text) => api.post(`/sales/${id}/problems${token ? `?t=${encodeURIComponent(token)}` : ''}`, { text }),
   adminList: () => api.get('/sales/admin'),
-  adminSellerPaid: (id) => api.post(`/sales/admin/${id}/seller-paid`),
-  adminRelease: (id) => api.post(`/sales/admin/${id}/received`),
+  adminSellerPaid: (id) => api.post(`/sales/admin/${id}/seller-payment`),
+  adminRelease: (id) => api.post(`/sales/admin/${id}/receipt`),
 }
 
 export const orderPayApi = {
-  status: () => api.get('/order-pay/status'),
+  status: () => api.get('/order-payments/status'),
   start: (amount, saveCard, draft) =>
-    api.post('/order-pay/start', { amount, consent: saveCard, draft: draft ? JSON.stringify(draft.draft) : null, isBatch: Boolean(draft?.isBatch) }),
-  confirm: (paymentId, externalIdentifier) => api.post('/order-pay/confirm', { paymentId, externalIdentifier }),
+    api.post('/order-payments', { amount, consent: saveCard, draft: draft ? JSON.stringify(draft.draft) : null, isBatch: Boolean(draft?.isBatch) }),
+  confirm: (paymentId, externalIdentifier) => api.post('/order-payments/confirmation', { paymentId, externalIdentifier }),
 }
 
 // פניות מדף "יצירת קשר"
@@ -257,7 +257,7 @@ export const reviewsApi = {
   pending: () => api.get('/reviews/pending'),
   thanks: () => api.get('/reviews/thanks'),
   submit: (loanId, dto) => api.post(`/reviews/${encodeURIComponent(loanId)}`, dto),
-  dismiss: (loanId) => api.post(`/reviews/${encodeURIComponent(loanId)}/dismiss`, {}),
+  dismiss: (loanId) => api.post(`/reviews/${encodeURIComponent(loanId)}/dismissal`, {}),
   adminList: () => api.get('/reviews/admin'),
   setHidden: (reviewId, hidden) => api.put(`/reviews/admin/${encodeURIComponent(reviewId)}/hidden`, { hidden }),
 }

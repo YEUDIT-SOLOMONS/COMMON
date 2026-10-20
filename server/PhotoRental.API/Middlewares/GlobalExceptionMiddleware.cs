@@ -1,7 +1,8 @@
-﻿namespace PhotoRental.API.Middlewares;
+namespace PhotoRental.API.Middlewares;
 
 using System.Net;
 using System.Text.Json;
+using PhotoRental.Core.Exceptions;
 
 // Middleware גלובלי לתפיסת שגיאות בצורה מרוכזת ומסודרת,
 // כדי שכל בקר (Controller) לא יצטרך try/catch משלו וכדי שהלקוח תמיד יקבל תשובת JSON עקבית.
@@ -32,7 +33,16 @@ public class GlobalExceptionMiddleware
 
             // שגיאות עסקיות צפויות (קלט לא תקין, לא נמצא, התחברות שגויה, מצב שלא מאפשר את הפעולה) נרשמות כאזהרה קצרה
             // בלי Stack Trace, כדי שביומן יופיעו כשגיאות (ERROR) רק תקלות אמיתיות
-            if (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
+            if (ex is ConcurrencyConflictException conflict)
+            {
+                _logger.LogWarning(
+                    "התנגשות על משאב {ResourceId}: {Method} {Path} (משתמש: {UserId})",
+                    conflict.ResourceId ?? "לא ידוע",
+                    context.Request.Method,
+                    context.Request.Path,
+                    userId ?? "אנונימי");
+            }
+            else if (ex is not DataAccessException && ex is ArgumentException or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException)
             {
                 _logger.LogWarning(
                     "בקשה נדחתה ({ExceptionType}): {Method} {Path} (משתמש: {UserId}) - {Reason}",
@@ -61,6 +71,8 @@ public class GlobalExceptionMiddleware
         // מיפוי סוגי חריגות נפוצים לקודי סטטוס HTTP מתאימים
         var statusCode = exception switch
         {
+            ConcurrencyConflictException => HttpStatusCode.Conflict,
+            DataAccessException => HttpStatusCode.ServiceUnavailable,
             ArgumentException => HttpStatusCode.BadRequest,
             KeyNotFoundException => HttpStatusCode.NotFound,
             InvalidOperationException => HttpStatusCode.Conflict,
@@ -72,7 +84,11 @@ public class GlobalExceptionMiddleware
         context.Response.StatusCode = (int)statusCode;
 
         string message;
-        if (statusCode == HttpStatusCode.InternalServerError && !isDevelopment)
+        if (exception is ConcurrencyConflictException)
+        {
+            message = exception.Message;
+        }
+        else if ((statusCode is HttpStatusCode.InternalServerError or HttpStatusCode.ServiceUnavailable) && !isDevelopment)
         {
             // בפרודקשן לא חושפים ללקוח פרטים פנימיים - רק טקסט כללי (הפרטים המלאים נכתבים ללוג)
             message = "אירעה שגיאה בשרת, אנא נסו שוב מאוחר יותר";
@@ -87,10 +103,11 @@ public class GlobalExceptionMiddleware
         var response = new
         {
             StatusCode = (int)statusCode,
-            Message = message
+            Message = message,
+            CorrelationId = context.GetCorrelationId()
         };
 
-        return context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        return context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
     private static string BuildDetailedMessage(Exception exception, bool isDevelopment)

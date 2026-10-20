@@ -18,7 +18,7 @@ public class RenterPickupController : ControllerBase
     }
 
     [HttpGet("{loanId}")]
-    public async Task<IActionResult> Get(string loanId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> Get([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await _loanService.ValidateRenterTokenAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         var view = await _loanService.GetRenterPickupViewAsync(loanId);
@@ -26,7 +26,7 @@ public class RenterPickupController : ControllerBase
     }
 
     [HttpPost("{loanId}")]
-    public async Task<IActionResult> Mark(string loanId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> Mark([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await _loanService.ValidateRenterTokenAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         await _loanService.MarkPickedUpAsync(loanId, "Renter");

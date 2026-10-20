@@ -64,26 +64,14 @@ public class GetPackageShippingService : IShippingService
         var pickup = BuildPoint(pickupAddress);
         var dropoff = BuildPoint(dropoffAddress);
 
+        var sharedRouteTask = GetSharedRouteQuoteAsync(pickup, dropoff);
         var expressTask = GetExpressQuoteOrZeroAsync(pickup, dropoff);
-        var regular = 0m;
-        var outOfRange = false;
-        try
-        {
-            regular = await GetSharedRouteQuoteAsync(pickup, dropoff);
-        }
-        catch (InvalidOperationException ex) when (ex.Message == ShippingMessages.OutOfRange)
-        {
-            outOfRange = true;
-        }
-        var express = await expressTask;
-        if (outOfRange && express <= 0)
-            throw new InvalidOperationException(ShippingMessages.OutOfRange);
+        await Task.WhenAll(sharedRouteTask, expressTask);
 
         return new ShippingQuoteDto
         {
-            RegularPrice = regular,
-            ExpressPrice = express,
-            RegularOutOfRange = outOfRange
+            RegularPrice = await sharedRouteTask,
+            ExpressPrice = await expressTask
         };
     }
 
@@ -557,14 +545,14 @@ public class GetPackageShippingService : IShippingService
         var body = BuildExpressBody(pickup, dropoff);
         var response = await PostAsync(ExpressQuotePath, body);
         var result = await ReadResponseAsync<ExpressQuoteResponse>(response, "קבלת הצעת מחיר אקספרס");
-        return result.TaxRate > 0 && result.TaxRate < result.TotalRate ? result.TotalRate + result.TaxRate : result.TotalRate;
+        return result.TotalRate;
     }
 
     private static ExpressRouteRequest BuildExpressBody(PointBody pickup, PointBody dropoff, string? notes = null) => new()
     {
         Deliveries = new List<ExpressDeliveryItem>
         {
-            new() { PickUpPoint = pickup, DropOffPoint = dropoff, Package = new ExpressPackageBody(), Notes = notes }
+            new() { PickUpPoint = pickup, DropOffPoint = dropoff, Notes = notes }
         },
         // עבור משלוח בודד (המקרה היחיד שהאתר תומך בו כרגע) - תמיד [0, 0]: איסוף ומסירה של אותה
         // "משלוח יחיד" באינדקס 0 במערך deliveries (ראו תיעוד השדה stopPointsOrder)
@@ -641,23 +629,11 @@ public class GetPackageShippingService : IShippingService
     private static string? TruncateOrNull(string? value) =>
         string.IsNullOrEmpty(value) ? null : value.Length <= 50 ? value : value[..50];
 
-    private Task<HttpResponseMessage> PostAsync<TBody>(string path, TBody body) => SendAsync(HttpMethod.Post, path, body);
-
-    private Task<HttpResponseMessage> PutAsync<TBody>(string path, TBody body) => SendAsync(HttpMethod.Put, path, body);
-
-    // כתובת חופשית (של המשכירה) ש-GetPackage לא מזהים כשורה אחת ("unknown location") - שולחים שוב מפוצלת לעיר/רחוב/מספר
-    private async Task<HttpResponseMessage> SendAsync<TBody>(HttpMethod method, string path, TBody body)
+    private async Task<HttpResponseMessage> PostAsync<TBody>(string path, TBody body)
     {
         try
         {
-            var json = System.Text.Json.JsonSerializer.SerializeToNode(body)!;
-            var response = await _http.SendAsync(new HttpRequestMessage(method, path) { Content = JsonContent.Create(json) });
-            if (response.StatusCode != System.Net.HttpStatusCode.BadRequest)
-                return response;
-            var text = await response.Content.ReadAsStringAsync();
-            if (text.Contains("allResolversFailGrade", StringComparison.OrdinalIgnoreCase) && SplitFreeTextAddresses(json))
-                return await _http.SendAsync(new HttpRequestMessage(method, path) { Content = JsonContent.Create(json) });
-            return new HttpResponseMessage(response.StatusCode) { Content = new StringContent(text) };
+            return await _http.PostAsJsonAsync(path, body);
         }
         catch (Exception ex)
         {
@@ -665,42 +641,16 @@ public class GetPackageShippingService : IShippingService
         }
     }
 
-    private static bool SplitFreeTextAddresses(System.Text.Json.Nodes.JsonNode? node)
+    private async Task<HttpResponseMessage> PutAsync<TBody>(string path, TBody body)
     {
-        var changed = false;
-        if (node is System.Text.Json.Nodes.JsonObject obj)
+        try
         {
-            if (obj["address"] is System.Text.Json.Nodes.JsonObject address
-                && address["addressLine1"]?.GetValue<string>() is { } line && ParseFreeText(line) is { } parsed)
-            {
-                obj["address"] = new System.Text.Json.Nodes.JsonObject
-                {
-                    ["country"] = "IL",
-                    ["city"] = parsed.City,
-                    ["street"] = parsed.Street,
-                    ["number"] = parsed.Number
-                };
-                changed = true;
-            }
-            foreach (var child in obj.Select(p => p.Value).ToList())
-                changed |= SplitFreeTextAddresses(child);
+            return await _http.PutAsJsonAsync(path, body);
         }
-        else if (node is System.Text.Json.Nodes.JsonArray array)
+        catch (Exception ex)
         {
-            foreach (var child in array.ToList())
-                changed |= SplitFreeTextAddresses(child);
+            throw new InvalidOperationException($"החיבור לשרתי GetPackage נכשל: {ex.Message}", ex);
         }
-        return changed;
-    }
-
-    // "רחוב מספר, עיר" -> (עיר, רחוב, מספר); null אם הכתובת לא בתבנית הזו
-    private static (string City, string Street, string Number)? ParseFreeText(string line)
-    {
-        var parts = line.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length < 2)
-            return null;
-        var match = System.Text.RegularExpressions.Regex.Match(parts[0], @"^(.*?\D)\s+(\d+[א-ת]?)$");
-        return match.Success ? (parts[^1], match.Groups[1].Value.Trim(), match.Groups[2].Value) : null;
     }
 
     private static async Task<TResult> ReadResponseAsync<TResult>(HttpResponseMessage response, string actionDescription)
@@ -709,7 +659,7 @@ public class GetPackageShippingService : IShippingService
         {
             var errorText = await response.Content.ReadAsStringAsync();
             if (errorText.Contains("outOfAllowedDistance", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(ShippingMessages.OutOfRange);
+                throw new InvalidOperationException("משלוח עם שליח אפשרי כרגע רק למרחק קצר (בדרך כלל באותה עיר או באזור). לכתובת הזו אפשר לבחור איסוף עצמי.");
             throw new InvalidOperationException($"{actionDescription} מול GetPackage נכשלה (קוד {(int)response.StatusCode}): {errorText}");
         }
 
@@ -840,10 +790,12 @@ public class GetPackageShippingService : IShippingService
         [JsonPropertyName("dropOffPoint")]
         public PointBody DropOffPoint { get; set; } = new();
 
-        // באקספרס החבילה חובה, והגודל נשלח כמספר (0-3); כמחרוזת ("MEDIUM") GetPackage דוחים אותו
+        // במסלול האקספרס החבילה אופציונלית (לפי ה-OpenAPI של GetPackage). שליחת size כמחרוזת ("MEDIUM") נדחית
+        // שם בשגיאת 400 ("Enum PackageSize cannot represent non-string value: 2") - כנראה כי השרת שלהם ממיר
+        // את הערך למספר לפני שהוא מגיע לשכבה הפנימית - ולכן לא שולחים כאן חבילה כלל.
         [JsonPropertyName("package")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public ExpressPackageBody? Package { get; set; }
+        public PackageBody? Package { get; set; }
 
         [JsonPropertyName("notes")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -877,16 +829,6 @@ public class GetPackageShippingService : IShippingService
 
         [JsonPropertyName("totalRate")]
         public decimal TotalRate { get; set; }
-
-        [JsonPropertyName("taxRate")]
-        public decimal TaxRate { get; set; }
-    }
-
-    private class ExpressPackageBody
-    {
-        // 2 = MEDIUM
-        [JsonPropertyName("size")]
-        public int Size { get; set; } = 2;
     }
 
     private class ExpressAcceptResponse

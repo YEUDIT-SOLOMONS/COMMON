@@ -23,7 +23,6 @@ import { SortDropdown } from '../components/SortDropdown.jsx'
 import { Splash } from '../components/Splash.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { Loader } from '../components/Loader.jsx'
-import { DEMO_SALE } from '../api/demoSale.js'
 import { SuggestCategoryModal } from '../components/SuggestCategoryModal.jsx'
 
 // סליידר-זום: 5 דרגות (0..4) = 7,6,5,4,3 כרטיסים בשורה. הכרטיסים תמיד ממלאים את השורה בדיוק, וכל
@@ -93,28 +92,6 @@ function PillarMark({ children }) {
   )
 }
 
-// הקטלוג האחרון נשמר בדפדפן ומוצג מיד בכניסה הבאה, ומתעדכן ברקע
-const CATALOG_KEY = 'common.catalog.v1'
-
-function readCatalog() {
-  if (DEMO_SALE) return null
-  try {
-    const saved = JSON.parse(localStorage.getItem(CATALOG_KEY) ?? 'null')
-    return Array.isArray(saved?.items) && saved.items.length ? saved : null
-  } catch {
-    return null
-  }
-}
-
-function writeCatalog(categories, items) {
-  if (DEMO_SALE) return
-  try {
-    localStorage.setItem(CATALOG_KEY, JSON.stringify({ categories, items }))
-  } catch {
-    // אין מקום או אחסון חסום - פשוט טוענים מהשרת בפעם הבאה
-  }
-}
-
 export function Home() {
   const { user, isAuthenticated, updateUser } = useAuth()
   // SMIL לא מכבד את prefers-reduced-motion דרך CSS - לכן תנועת החבל פשוט לא מרונדרת במקרה כזה
@@ -127,13 +104,10 @@ export function Home() {
   // לוח יד 2: אותו קטלוג ואותן קטגוריות, רק עם הפריטים שלמכירה
   const saleMode = useLocation().pathname === '/yad2'
 
-  const [cachedCatalog] = useState(readCatalog)
-  const [categories, setCategories] = useState(() => cachedCatalog?.categories ?? [])
-  const [items, setItems] = useState(() => cachedCatalog?.items ?? [])
+  const [categories, setCategories] = useState([])
+  const [items, setItems] = useState([])
   const [loans, setLoans] = useState([])
-  const [loading, setLoading] = useState(!cachedCatalog)
-  const [loadingRest, setLoadingRest] = useState(false)
-  const initialSaleMode = useRef(saleMode)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeCategoryId, setActiveCategoryId] = useState('all')
   // תת-קטגוריה נבחרת בתוך הקטגוריה הראשית ('' = כל התת-קטגוריות)
@@ -254,37 +228,19 @@ export function Home() {
   }, [deepLinkItemId, loading, items, navigate, searchParams])
 
   const load = useCallback(async () => {
-    if (!cachedCatalog) setLoading(true)
+    setLoading(true)
     setError('')
-    let fullLoaded = false
-    if (!cachedCatalog)
-      itemsApi
-        .firstPage(PAGE_SIZE, initialSaleMode.current)
-        .then((first) => {
-          if (fullLoaded || !Array.isArray(first) || !first.length) return
-          first.forEach((it, i) => randomRank.current.set(it.id, i / 1000 - 1))
-          setItems(first)
-          setLoading(false)
-          setLoadingRest(true)
-        })
-        .catch(() => {})
     try {
       const [categoriesResult, itemsResult] = await Promise.all([
-        categoriesApi.getAll().then((result) => {
-          setCategories(result ?? [])
-          return result
-        }),
+        categoriesApi.getAll(),
         itemsApi.getAll(),
       ])
-      fullLoaded = true
+      setCategories(categoriesResult ?? [])
       setItems(itemsResult ?? [])
-      writeCatalog(categoriesResult ?? [], itemsResult ?? [])
     } catch (err) {
-      if (!cachedCatalog) setError(err.message)
+      setError(err.message)
     } finally {
-      fullLoaded = true
       setLoading(false)
-      setLoadingRest(false)
     }
 
     // נתוני ההשכרות משמשים רק לחישוב "מיון לפי פופולאריות" (כמה פעמים כל פריט הושכר בפועל).
@@ -304,7 +260,7 @@ export function Home() {
         setLoans([])
       }
     }
-  }, [cachedCatalog])
+  }, [])
 
   useEffect(() => {
     load()
@@ -1037,7 +993,6 @@ export function Home() {
             </button>
           </div>
         )}
-        {loadingRest && <Loader label="טוען פריטים" compact />}
       </div>
 
       {!saleMode && (

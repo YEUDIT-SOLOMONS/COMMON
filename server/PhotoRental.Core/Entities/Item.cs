@@ -1,26 +1,25 @@
 namespace PhotoRental.Core.Entities;
 
-using Google.Cloud.Firestore;
 using PhotoRental.Core.Enums;
 
-[FirestoreData]
 public class Item
 {
-    [FirestoreDocumentId]
     public string? Id { get; set; }
 
-    [FirestoreProperty]
+    // מונה גרסה שעולה בכל השכרה של הפריט - זה המשאב שמתחרים עליו
+    public long Version { get; set; }
+
+    // updateTime של המסמך ב-Firestore בזמן הקריאה. לא נשמר כשדה - משמש כ-concurrency token בשמירה
+    public string? ConcurrencyToken { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
-    [FirestoreProperty]
     public string Description { get; set; } = string.Empty;
 
-    [FirestoreProperty]
     public decimal DailyPrice { get; set; }
 
     // מחיר לשעה - אופציונלי, נקבע ע"י המשכיר בלבד אם הוא מעוניין לאפשר גם השכרה לפי שעות.
     // null = המשכיר לא הפעיל תמחור שעתי, ורק DailyPrice רלוונטי.
-    [FirestoreProperty]
     public decimal? HourlyPrice { get; set; }
 
     // המחירים (יומי ושעתי) כוללים מע"מ שהמשכירה ביקשה להוסיף
@@ -42,30 +41,23 @@ public class Item
     public string? ExtraCategoryId { get; set; }
 
     // משך ההשכרה המינימלי שהמשכיר דורש (למשל: לפחות 2 ימים, או לפחות 3 שעות) - אופציונלי, ברירת מחדל: יום אחד.
-    [FirestoreProperty]
     public RentalUnit MinRentalUnit { get; set; } = RentalUnit.Days;
 
-    [FirestoreProperty]
     public int MinRentalAmount { get; set; } = 1;
 
-    [FirestoreProperty]
     public string SerialNumber { get; set; } = string.Empty;
 
-    [FirestoreProperty]
     public CopyStatus Status { get; set; } = CopyStatus.Available;
 
     // קטגוריה ובעלים - נשמרים כמזהים (Foreign Keys) בלבד,
     // כמקובל במסד נתונים מסוג מסמכים (Firestore) ולא כרשומות משוכפלות.
-    [FirestoreProperty]
     public string? CategoryId { get; set; }
 
-    [FirestoreProperty]
     public string? OwnerId { get; set; }
 
     // תמונת הפריט, מקודדת כ-Data URL (Base64) ונשמרת ישירות כשדה מחרוזת במסמך ה-Firestore -
     // אין צורך בשירות אחסון קבצים נפרד (Firebase Storage) עבור תמונות קטנות של פריט בודד.
     // ריק/null = אין תמונה (מוצג אייקון ברירת מחדל בצד הלקוח).
-    [FirestoreProperty]
     public string? ImageDataUrl { get; set; }
 
     // תמונות נוספות של הפריט (מעבר לראשית, ImageDataUrl) - עד 5, נשמרות כמחרוזת JSON אחת במסמך
@@ -74,10 +66,8 @@ public class Item
     // עיר וכתובת מדויקת - מועתקות אוטומטית מכתובת המגורים של המשכיר (User.City / User.Address) בעת
     // יצירת הפריט. העיר מוצגת בגלוי לכל המשתמשים בכרטיס הפריט; הכתובת המדויקת נחשפת ללקוח רק
     // בהקשר של השכרת פריט ספציפי, ומוצגת בממשק רק כאשר השוכר בוחר באיסוף עצמי.
-    [FirestoreProperty]
     public string? City { get; set; }
 
-    [FirestoreProperty]
     public string? Address { get; set; }
 
     // שם הרחוב בלבד - מוצג בחלון הפריט (בלי מספר הבית)

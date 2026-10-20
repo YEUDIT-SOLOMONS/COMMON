@@ -14,13 +14,13 @@ import { AdminPanel } from './pages/AdminPanel.jsx'
 import { Contact } from './pages/Contact.jsx'
 import { ForgotPassword } from './pages/ForgotPassword.jsx'
 import { Home } from './pages/Home.jsx'
+import { Catalog } from './pages/Catalog.jsx'
 import { CommissionPaid } from './pages/CommissionPaid.jsx'
 import { CommissionPay } from './pages/CommissionPay.jsx'
 import { CommissionProof } from './pages/CommissionProof.jsx'
 import { ItemAction } from './pages/ItemAction.jsx'
 import { LoanAction } from './pages/LoanAction.jsx'
 import { RenterPickup } from './pages/RenterPickup.jsx'
-import { CallBack } from './pages/CallBack.jsx'
 import { AvailabilityAnswer } from './pages/AvailabilityAnswer.jsx'
 import { Login } from './pages/Login.jsx'
 import { NotFound } from './pages/NotFound.jsx'
@@ -59,6 +59,7 @@ function App() {
       <main id="main-content" tabIndex={-1}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/catalog" element={<Catalog />} />
           <Route path="/yad2" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -118,7 +119,6 @@ function App() {
           <Route path="/questions/:id" element={<QuestionThread />} />
           <Route path="/purchase/:id" element={<Purchase />} />
           <Route path="/pickup/:loanId" element={<RenterPickup />} />
-          <Route path="/call-back/:logId" element={<CallBack />} />
           <Route path="/availability-answer/:requestId" element={<AvailabilityAnswer />} />
           <Route path="/item-action/:itemId" element={<ItemAction />} />
           <Route path="/commission-proof" element={<CommissionProof />} />
@@ -133,14 +133,13 @@ function App() {
         <div className="site-footer-grid">
           <div className="site-footer-brand">
             <Wordmark className="site-footer-wordmark" />
-            <p>קהילת צלמות להשכרה, קנייה ומכירה של ציוד צילום בין צלמות בציבור החרדי.</p>
+            <p>קהילת צלמות להשכרת ציוד צילום בין צלמות בציבור החרדי.</p>
             <p>מתאים. נוח. גמיש.</p>
           </div>
 
           <div className="site-footer-col">
             <h2>ניווט</h2>
-            <Link to="/">קטלוג ההשכרה</Link>
-            <Link to="/yad2">לוח יד 2</Link>
+            <Link to="/">קטלוג הציוד</Link>
             {isAuthenticated ? <Link to="/profile">החשבון שלי</Link> : <Link to="/register">הצטרפות לקהילה</Link>}
             <Link to="/contact">יצירת קשר</Link>
           </div>
@@ -162,7 +161,7 @@ function App() {
             תכנון, פיתוח טכנולוגי וניהול: יהודית סלומונס {new Date().getFullYear()} · עיצוב: גיטי שורץ{' '}
             <span className="site-footer-credit-mail">gitish330@gmail.com</span>
           </p>
-          <p>COMMON ©{new Date().getFullYear()} · קהילת הצלמות להשכרת ציוד ויד 2</p>
+          <p>COMMON ©{new Date().getFullYear()} · קהילת הצלמות להשכרת ציוד</p>
         </div>
       </footer>
     </>

@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.DTOs;
@@ -43,7 +43,7 @@ public class LoansController : ControllerBase
 
     // ההשכרות שלי כשוכרת (האזור האישי - "ההשכרות שלי")
     [HttpGet("user/{userId}")]
-    public async Task<IActionResult> GetByUser(string userId, [FromQuery] int? limit)
+    public async Task<IActionResult> GetByUser([FromRoute] string userId, [FromQuery] int? limit)
     {
         if (!IsSelfOrAdmin(userId)) return Forbid();
         var loans = await _loanService.GetByBorrowerIdAsync(userId, limit);
@@ -52,7 +52,7 @@ public class LoansController : ControllerBase
 
     // השכרות על הציוד שלי כמשכירה (האזור האישי - "השכרות על הציוד שלי")
     [HttpGet("incoming/{ownerId}")]
-    public async Task<IActionResult> GetIncoming(string ownerId, [FromQuery] int? limit)
+    public async Task<IActionResult> GetIncoming([FromRoute] string ownerId, [FromQuery] int? limit)
     {
         if (!IsSelfOrAdmin(ownerId)) return Forbid();
         return Ok(await _loanService.GetByOwnerIdAsync(ownerId, limit));
@@ -60,7 +60,7 @@ public class LoansController : ControllerBase
 
     // הצעת מחיר משלוח אמיתית (רגיל/אקספרס) - נקראת מהלקוח מיד כשנבחר "משלוח" והוזנה כתובת, עוד
     // לפני אימות הזמינות, כדי שהמחיר המוצג יהיה תמיד המחיר האמיתי (ראו ILoanService.GetShippingQuoteAsync)
-    [HttpPost("shipping-quote")]
+    [HttpPost("shipping-quotes")]
     public async Task<IActionResult> GetShippingQuote([FromBody] ShippingQuoteRequestDto request)
     {
         var quote = await _loanService.GetShippingQuoteAsync(request);
@@ -69,34 +69,34 @@ public class LoansController : ControllerBase
 
     // פתיחת עסקת השכרה חדשה - רק על שם המשתמשת המחוברת (או מנהלת)
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] LoanRequestDto request)
+    public async Task<IActionResult> Create([FromBody] LoanRequestDto request, CancellationToken ct)
     {
         if (!IsSelfOrAdmin(request.BorrowerId)) return Forbid();
-        var loan = await _loanService.CreateAsync(request);
-        return Ok(loan);
+        var loan = await _loanService.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(GetOrder), new { id = loan.Id }, loan);
     }
 
     // פתיחת הזמנה אחת הכוללת כמה פריטים מאותו חבר קהילה (משכיר) בבת אחת (ראו LoanBatchRequestDto)
     [HttpPost("batch")]
-    public async Task<IActionResult> CreateBatch([FromBody] LoanBatchRequestDto request)
+    public async Task<IActionResult> CreateBatch([FromBody] LoanBatchRequestDto request, CancellationToken ct)
     {
         if (!IsSelfOrAdmin(request.BorrowerId)) return Forbid();
-        var loans = await _loanService.CreateBatchAsync(request);
-        return Ok(loans);
+        var loans = await _loanService.CreateBatchAsync(request, ct);
+        return CreatedAtAction(nameof(GetOrder), new { id = loans[0].Id }, loans);
     }
 
     // עדכון סטטוס השכרה ידני (Active / Returned / Overdue / Cancelled) - למנהלות בלבד
     [HttpPut("{id}/status")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateStatus(string id, [FromBody] string newStatus)
+    public async Task<IActionResult> UpdateStatus([FromRoute] string id, [FromBody] string newStatus)
     {
         await _loanService.UpdateStatusAsync(id, newStatus);
         return NoContent();
     }
 
     // סימון "הפריט נאסף" מהאתר - המשכירה, השוכרת או מנהלת. אותו שדה כמו בחלון הסימון שבמייל, ולכן הכול מסונכרן
-    [HttpPost("{id}/picked-up")]
-    public async Task<IActionResult> MarkPickedUp(string id)
+    [HttpPost("{id}/pickup")]
+    public async Task<IActionResult> MarkPickedUp([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -107,8 +107,8 @@ public class LoansController : ControllerBase
     }
 
     // ביטול השכרה: השוכרת, המשכירה או מנהלת. הכללים (24 שעות לפני תחילה) נאכפים בשירות
-    [HttpPost("{id}/cancel")]
-    public async Task<IActionResult> Cancel(string id)
+    [HttpPost("{id}/cancellation")]
+    public async Task<IActionResult> Cancel([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -120,8 +120,8 @@ public class LoansController : ControllerBase
     }
 
     // שינוי אופן ההחזרה באמצע ההשכרה: השוכרת (או מנהלת) בלבד
-    [HttpPost("{id}/return-method")]
-    public async Task<IActionResult> ChangeReturnMethod(string id, [FromBody] ChangeReturnMethodDto request)
+    [HttpPut("{id}/return-method")]
+    public async Task<IActionResult> ChangeReturnMethod([FromRoute] string id, [FromBody] ChangeReturnMethodDto request)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -132,7 +132,7 @@ public class LoansController : ControllerBase
 
     // מסך "ההזמנה בוצעה" - פרטי ההזמנה (כל הפריטים) לשוכרת, למשכירה ולמנהלות בלבד
     [HttpGet("{id}/order")]
-    public async Task<IActionResult> GetOrder(string id)
+    public async Task<IActionResult> GetOrder([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההזמנה לא נמצאה" });
@@ -143,7 +143,7 @@ public class LoansController : ControllerBase
 
     // מצב משלוח חי (זמן הגעה, שליח, מיקום) - לשוכרת, למשכירה ולמנהלות בלבד
     [HttpGet("{id}/shipping-status")]
-    public async Task<IActionResult> GetShippingStatus(string id)
+    public async Task<IActionResult> GetShippingStatus([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -153,21 +153,21 @@ public class LoansController : ControllerBase
     }
 
     // סימון השכרה כמוחזרת - המשכירה (בעלת הפריט) או מנהלת בלבד; השוכרת אינה יכולה לסמן החזרה בעצמה, כדי למנוע הונאה
-    [HttpPost("{id}/return")]
-    public async Task<IActionResult> Return(string id)
+    [HttpPost("{id}/return-confirmation")]
+    public async Task<IActionResult> Return([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
         if (!IsAdmin && CurrentUserId != participants.OwnerId) return Forbid();
 
-        await _loanService.ReturnLoanAsync(id, IsAdmin && CurrentUserId != participants.OwnerId ? "מנהלת · באתר" : "משכירה · באתר");
+        await _loanService.ReturnLoanAsync(id);
         return NoContent();
     }
 
     // אישור קבלת תשלום ידני (מזומן/העברה בנקאית) - למשכירה (בעלת הפריט) בלבד, לאחר שקיבלה את התשלום.
     // פותח את חשיפת פרטי הקשר שלה לשוכרת כאשר אופן הקבלה הוא איסוף עצמי.
-    [HttpPost("{id}/confirm-payment")]
-    public async Task<IActionResult> ConfirmPayment(string id)
+    [HttpPost("{id}/payment-confirmation")]
+    public async Task<IActionResult> ConfirmPayment([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -179,7 +179,7 @@ public class LoansController : ControllerBase
 
     // סיכום החודש למשכירה (פתק באזור האישי)
     [HttpGet("owner-summary/{ownerId}")]
-    public async Task<IActionResult> OwnerSummary(string ownerId)
+    public async Task<IActionResult> OwnerSummary([FromRoute] string ownerId)
     {
         if (!IsSelfOrAdmin(ownerId)) return Forbid();
         return Ok(await _loanService.GetOwnerMonthSummaryAsync(ownerId));
@@ -187,7 +187,7 @@ public class LoansController : ControllerBase
 
     // אסמכתת ההעברה של האתר למשכירה (השכרה ששולמה באשראי) - למשכירה ולמנהלות בלבד
     [HttpGet("{id}/payout-proof")]
-    public async Task<IActionResult> GetPayoutProof(string id)
+    public async Task<IActionResult> GetPayoutProof([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });
@@ -199,7 +199,7 @@ public class LoansController : ControllerBase
 
     // אסמכתת ההעברה הבנקאית של השכרה - לשוכרת שהעלתה אותה, למשכירה ולמנהלות בלבד
     [HttpGet("{id}/payment-proof")]
-    public async Task<IActionResult> GetPaymentProof(string id)
+    public async Task<IActionResult> GetPaymentProof([FromRoute] string id)
     {
         var participants = await _loanService.GetParticipantsAsync(id);
         if (participants is null) return NotFound(new { Message = "ההשכרה לא נמצאה" });

@@ -20,7 +20,7 @@ public class ReviewsController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("item/{itemId}")]
-    public async Task<IActionResult> ForItem(string itemId) => Ok(await _reviews.GetItemReviewsAsync(itemId));
+    public async Task<IActionResult> ForItem([FromRoute] string itemId) => Ok(await _reviews.GetItemReviewsAsync(itemId));
 
     [AllowAnonymous]
     [HttpGet("summary")]
@@ -37,7 +37,7 @@ public class ReviewsController : ControllerBase
 
     [Authorize]
     [HttpPost("{loanId}")]
-    public async Task<IActionResult> Submit(string loanId, [FromBody] ReviewSubmitDto dto)
+    public async Task<IActionResult> Submit([FromRoute] string loanId, [FromBody] ReviewSubmitDto dto)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -55,8 +55,8 @@ public class ReviewsController : ControllerBase
     }
 
     [Authorize]
-    [HttpPost("{loanId}/dismiss")]
-    public async Task<IActionResult> Dismiss(string loanId)
+    [HttpPost("{loanId}/dismissal")]
+    public async Task<IActionResult> Dismiss([FromRoute] string loanId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -70,7 +70,7 @@ public class ReviewsController : ControllerBase
 
     [Authorize(Roles = "Admin")]
     [HttpPut("admin/{reviewId}/hidden")]
-    public async Task<IActionResult> SetHidden(string reviewId, [FromBody] ReviewHiddenDto dto)
+    public async Task<IActionResult> SetHidden([FromRoute] string reviewId, [FromBody] ReviewHiddenDto dto)
     {
         await _reviews.SetHiddenAsync(reviewId, dto.Hidden);
         return Ok(new { dto.Hidden });

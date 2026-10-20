@@ -37,7 +37,7 @@ public class CallsController : ControllerBase
     public IActionResult CommonNumber() => Ok(new { number = _bridge.CommonNumber, callback = _bridge.CallbackEnabled });
 
     [Authorize]
-    [HttpPost("connect")]
+    [HttpPost("connections")]
     public async Task<IActionResult> Connect([FromBody] ConnectCallRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -49,29 +49,6 @@ public class CallsController : ControllerBase
     }
 
     public sealed record ConnectCallRequest(string LoanId);
-
-    [AllowAnonymous]
-    [HttpPost("callback-link")]
-    public async Task<IActionResult> CallbackLink([FromBody] CallbackLinkRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request?.LogId) || string.IsNullOrWhiteSpace(request.Token))
-            return NotFound(new { Message = "הקישור אינו תקף" });
-        await _bridge.CallbackFromLinkAsync(request.LogId, request.Token);
-        return NoContent();
-    }
-
-    public sealed record CallbackLinkRequest(string LogId, string Token);
-
-    [AllowAnonymous]
-    [HttpPost("twilio/inbound/whisper")]
-    public async Task<IActionResult> InboundWhisper([FromQuery] string logId)
-    {
-        var form = await Request.ReadFormAsync();
-        if (!ValidSignature(form))
-            return Unauthorized();
-
-        return Xml(await _bridge.WhisperAsync(logId));
-    }
 
     [AllowAnonymous]
     [HttpPost("twilio/inbound")]
@@ -121,7 +98,7 @@ public class CallsController : ControllerBase
         string detail;
         if (digits == "1")
         {
-            await _loans.MarkReturnedFromLinkAsync(loanId, "משכירה · בשיחה טלפונית (הקישה 1)");
+            await _loans.MarkReturnedFromLinkAsync(loanId);
             message = "תודה. סימנו שהפריט הוחזר.";
             detail = "סימנה שהוחזר (הקישה 1)";
         }
@@ -180,13 +157,6 @@ public class CallsController : ControllerBase
             "failed" or "canceled" => "Failed",
             _ => log.Status
         };
-        var answeredBy = form.TryGetValue("AnsweredBy", out var ab) ? ab.ToString() : string.Empty;
-        if (log.Status == "Answered" && (answeredBy.StartsWith("machine", StringComparison.Ordinal) || answeredBy == "fax"
-                                         || log.Detail?.StartsWith("ענה משיבון", StringComparison.Ordinal) == true))
-        {
-            log.Status = "NoAnswer";
-            log.Detail = "ענה משיבון";
-        }
         await _logs.UpdateAsync(log);
 
         // שיחת אימות זמינות שנדחתה / הסתיימה בלי הקשה - "לא ענתה" מיד, בלי לחכות לתום זמן ההמתנה

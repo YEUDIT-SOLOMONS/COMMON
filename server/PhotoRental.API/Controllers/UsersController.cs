@@ -36,7 +36,7 @@ public class UsersController : ControllerBase
 
     // שליפת משתמש לפי ID
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(string id)
+    public async Task<IActionResult> GetById([FromRoute] string id)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         var user = await _userService.GetByIdAsync(id);
@@ -56,7 +56,7 @@ public class UsersController : ControllerBase
     // ומשמש למילוי אוטומטי של מיקום הפריטים שהוא מוסיף מכאן ואילך. ניתן לקרוא גם בהמשך כדי
     // לעדכן כתובת קיימת מתוך האזור האישי.
     [HttpPatch("{id}/address")]
-    public async Task<IActionResult> UpdateAddress(string id, [FromBody] UserAddressUpdateDto request)
+    public async Task<IActionResult> UpdateAddress([FromRoute] string id, [FromBody] UserAddressUpdateDto request)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         var updated = await _userService.UpdateAddressAsync(id, request);
@@ -65,7 +65,7 @@ public class UsersController : ControllerBase
 
     // עדכון פרטים אישיים (שם/טלפון) מהאזור האישי, בכל עת
     [HttpPatch("{id}/profile")]
-    public async Task<IActionResult> UpdateProfile(string id, [FromBody] UserProfileUpdateDto request)
+    public async Task<IActionResult> UpdateProfile([FromRoute] string id, [FromBody] UserProfileUpdateDto request)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         var updated = await _userService.UpdateProfileAsync(id, request);
@@ -74,14 +74,14 @@ public class UsersController : ControllerBase
 
     // אישור תנאי עמלת השירות (פעם אחת, בעת הוספת הפריט הראשון) - נשמר עם חותמת זמן
     [HttpPatch("{id}/commission-consent")]
-    public async Task<IActionResult> AcceptCommission(string id)
+    public async Task<IActionResult> AcceptCommission([FromRoute] string id)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         return Ok(await _userService.AcceptCommissionAsync(id));
     }
 
     [HttpPatch("{id}/sale-commission-consent")]
-    public async Task<IActionResult> AcceptSaleCommission(string id)
+    public async Task<IActionResult> AcceptSaleCommission([FromRoute] string id)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         return Ok(await _userService.AcceptSaleCommissionAsync(id));
@@ -89,7 +89,7 @@ public class UsersController : ControllerBase
 
     // שליפת פרטי חשבון הבנק של המשתמש לקבלת תשלומים (לתצוגה/עריכה באזור האישי)
     [HttpGet("{id}/payout")]
-    public async Task<IActionResult> GetPayout(string id)
+    public async Task<IActionResult> GetPayout([FromRoute] string id)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         var payout = await _userService.GetPayoutAsync(id);
@@ -98,7 +98,7 @@ public class UsersController : ControllerBase
 
     // הגדרה/עדכון פרטי חשבון הבנק - ניתן לשינוי בכל עת מהאזור האישי
     [HttpPatch("{id}/payout")]
-    public async Task<IActionResult> UpdatePayout(string id, [FromBody] UserPayoutUpdateDto request)
+    public async Task<IActionResult> UpdatePayout([FromRoute] string id, [FromBody] UserPayoutUpdateDto request)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         var updated = await _userService.UpdatePayoutAsync(id, request);
@@ -107,7 +107,7 @@ public class UsersController : ControllerBase
 
     // מחיקת משתמש
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete([FromRoute] string id)
     {
         if (!IsSelfOrAdmin(id)) return Forbid();
         await _userService.DeleteAsync(id);

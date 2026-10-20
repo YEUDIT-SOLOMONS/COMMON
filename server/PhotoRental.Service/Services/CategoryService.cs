@@ -1,5 +1,6 @@
-﻿namespace PhotoRental.Service.Services;
+namespace PhotoRental.Service.Services;
 
+using AutoMapper;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
 using PhotoRental.Core.Interfaces;
@@ -7,11 +8,13 @@ using PhotoRental.Core.Interfaces;
 // שכבת הלוגיקה העסקית לניהול קטגוריות ציוד
 public class CategoryService : ICategoryService
 {
+    private readonly IMapper _mapper;
     private readonly ICategoryRepository _categoryRepository;
     private readonly IItemRepository _itemRepository;
 
-    public CategoryService(ICategoryRepository categoryRepository, IItemRepository itemRepository)
+    public CategoryService(ICategoryRepository categoryRepository, IItemRepository itemRepository, IMapper mapper)
     {
+        _mapper = mapper;
         _categoryRepository = categoryRepository;
         _itemRepository = itemRepository;
     }
@@ -23,14 +26,14 @@ public class CategoryService : ICategoryService
         return categories
             .OrderBy(c => c.Order)
             .ThenBy(c => c.Name, StringComparer.Create(new System.Globalization.CultureInfo("he-IL"), ignoreCase: true))
-            .Select(MapToDto)
+            .Select(_mapper.Map<CategoryDto>)
             .ToList();
     }
 
     public async Task<CategoryDto?> GetByIdAsync(string id)
     {
         var category = await _categoryRepository.GetByIdAsync(id);
-        return category is null ? null : MapToDto(category);
+        return category is null ? null : _mapper.Map<CategoryDto>(category);
     }
 
     public async Task<CategoryDto> CreateAsync(CategoryCreateDto dto)
@@ -60,7 +63,7 @@ public class CategoryService : ICategoryService
             Order = siblings.Count == 0 ? 0 : siblings.Max(c => c.Order) + 1
         };
         var created = await _categoryRepository.CreateAsync(category);
-        return MapToDto(created);
+        return _mapper.Map<CategoryDto>(created);
     }
 
     public async Task<CategoryDto> UpdateAsync(string id, CategoryCreateDto dto)
@@ -76,7 +79,7 @@ public class CategoryService : ICategoryService
 
         category.Name = name;
         await _categoryRepository.UpdateAsync(id, category);
-        return MapToDto(category);
+        return _mapper.Map<CategoryDto>(category);
     }
 
     // שינוי סדר קבוצת אחים (קטגוריות ראשיות, או תתי-קטגוריות של אותה קטגוריה): הסדר נקבע לפי רשימת
@@ -117,11 +120,4 @@ public class CategoryService : ICategoryService
             throw new ArgumentException("כבר קיימת קטגוריה בשם הזה");
     }
 
-    private static CategoryDto MapToDto(Category category) => new()
-    {
-        Id = category.Id ?? string.Empty,
-        Name = category.Name,
-        Order = category.Order,
-        ParentId = category.ParentId
-    };
 }

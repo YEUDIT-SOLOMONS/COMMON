@@ -92,11 +92,13 @@ public class ReviewService : IReviewService
     {
         var pending = new List<PendingReviewDto>();
 
-        foreach (var loan in (await _loans.GetByBorrowerIdAsync(userId)).Where(InPendingWindow))
+        var renterLoans = (await _loans.GetByBorrowerIdAsync(userId)).Where(InPendingWindow).ToList();
+        var renterItems = await _items.GetByIdsAsync(renterLoans.Select(l => l.ItemCopyId!).Where(id => !string.IsNullOrEmpty(id)));
+        foreach (var loan in renterLoans)
         {
             if (string.IsNullOrEmpty(loan.Id) || await IsClosedAsync(loan.Id, RenterRole))
                 continue;
-            var item = string.IsNullOrEmpty(loan.ItemCopyId) ? null : await _items.GetByIdAsync(loan.ItemCopyId);
+            var item = string.IsNullOrEmpty(loan.ItemCopyId) ? null : renterItems.GetValueOrDefault(loan.ItemCopyId);
             pending.Add(new PendingReviewDto
             {
                 LoanId = loan.Id,

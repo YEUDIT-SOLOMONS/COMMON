@@ -1,14 +1,11 @@
 namespace PhotoRental.Core.Entities;
 
-// מכירת פריט יד 2 דרך האתר (6% עמלה מהמוכרת)
+// מכירת פריט יד 2 דרך האתר (5% עמלה מהמוכרת)
 public class Sale
 {
     public string? Id { get; set; }
     public string ItemId { get; set; } = string.Empty;
     public string ItemName { get; set; } = string.Empty;
-
-    // כמה פריטים מאותה מוכרת שנקנו יחד: תשלום אחד ומשלוח אחד (עלות המשלוח נשמרת ברשומה הראשונה)
-    public string? OrderId { get; set; }
     public string SellerId { get; set; } = string.Empty;
     public string BuyerId { get; set; } = string.Empty;
     public decimal Price { get; set; }
@@ -28,10 +25,6 @@ public class Sale
     public string PaymentMethod { get; set; } = "CreditCard";
     public string PaymentTransactionId { get; set; } = string.Empty;
     public string? PaymentProofId { get; set; }
-
-    // העברה בנקאית עם משלוח: דמי המשלוח נגבים מכרטיס שמור (כמו בהשכרות)
-    public string? ShippingChargeStatus { get; set; }
-    public string? ShippingPaymentId { get; set; }
 
     // "Paid" / "Received" / "Problem"
     public string Status { get; set; } = "Paid";

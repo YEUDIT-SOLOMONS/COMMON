@@ -45,7 +45,6 @@ export function Purchase() {
   if (!sale) return error ? <p className="state-message state-error">{error}</p> : <Loader label="טוען את הרכישה" />
 
   const buyer = sale.role === 'Buyer'
-  const many = sale.items?.length > 1
   const canReport = buyer && sale.status === 'Paid' && new Date(sale.confirmUntilUtc) > new Date()
 
   return (
@@ -53,28 +52,13 @@ export function Purchase() {
       <BrandMark className="loan-action-mark" />
       <h1>{buyer ? 'הרכישה שלך' : 'המכירה שלך'}</h1>
       <section className="loan-action-card">
-        {many ? (
-          <>
-            <p className="admin-call-note">{formatDateTime(sale.createdAtUtc)}</p>
-            {sale.items.map((line) => (
-              <div className="question-item" key={line.itemId}>
-                {line.image && <img src={line.image} alt="" />}
-                <span>
-                  <strong>{line.itemName}</strong>
-                  <span className="admin-call-note"> · ₪{line.price}</span>
-                </span>
-              </div>
-            ))}
-          </>
-        ) : (
-          <div className="question-item">
-            {sale.image && <img src={sale.image} alt="" />}
-            <span>
-              <strong>{sale.itemName}</strong>
-              <span className="admin-call-note"> · {formatDateTime(sale.createdAtUtc)}</span>
-            </span>
-          </div>
-        )}
+        <div className="question-item">
+          {sale.image && <img src={sale.image} alt="" />}
+          <span>
+            <strong>{sale.itemName}</strong>
+            <span className="admin-call-note"> · {formatDateTime(sale.createdAtUtc)}</span>
+          </span>
+        </div>
 
         {buyer ? (
           sale.paymentMethod === 'Cash' ? (
@@ -122,24 +106,24 @@ export function Purchase() {
         {sale.status === 'Received' && (
           <p className="form-success">
             ✓ {buyer
-              ? many ? 'אישרת שקיבלת את הפריטים. תודה!' : 'אישרת שקיבלת את הפריט. תודה!'
+              ? 'אישרת שקיבלת את הפריט. תודה!'
               : sale.paymentMethod === 'CreditCard'
-                ? many ? 'הקונה קיבלה את הפריטים - הסכום יועבר אלייך בימים הקרובים.' : 'הקונה קיבלה את הפריט - הסכום יועבר אלייך בימים הקרובים.'
-                : many ? 'הקונה קיבלה את הפריטים.' : 'הקונה קיבלה את הפריט.'}
+                ? 'הקונה קיבלה את הפריט - הסכום יועבר אלייך בימים הקרובים.'
+                : 'הקונה קיבלה את הפריט.'}
           </p>
         )}
         {!buyer && sale.status === 'Paid' && (
           <div className={askHanded ? 'sale-handed is-asked' : 'sale-handed'}>
             {sale.handedOverAtUtc ? (
-              <p className="form-success">✓ {many ? 'סימנת שמסרת את הפריטים.' : 'סימנת שמסרת את הפריט.'}</p>
+              <p className="form-success">✓ סימנת שמסרת את הפריט.</p>
             ) : sale.notHandedAtUtc ? (
               <p className="field-hint">סימנת שהפריט עוד לא נמסר. נעדכן כשהקונה תאשר קבלה.</p>
             ) : (
-              <p className="field-hint">{many ? 'מסרת את הפריטים לקונה?' : 'מסרת את הפריט לקונה?'}</p>
+              <p className="field-hint">מסרת את הפריט לקונה?</p>
             )}
             {!sale.handedOverAtUtc && (
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => act(() => salesApi.handed(id, token, true))}>
-                {many ? 'מסרתי את הפריטים ✓' : 'מסרתי את הפריט ✓'}
+                מסרתי את הפריט ✓
               </button>
             )}
             {!sale.handedOverAtUtc && !sale.notHandedAtUtc && (
@@ -154,7 +138,7 @@ export function Purchase() {
         {buyer && sale.status === 'Paid' && (
           <>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={() => act(() => salesApi.received(id, token))}>
-              {many ? 'קיבלתי את הפריטים ✓' : 'קיבלתי את הפריט ✓'}
+              קיבלתי את הפריט ✓
             </button>
             {canReport && !problemOpen && (
               <button type="button" className="link-button" onClick={() => setProblemOpen(true)}>

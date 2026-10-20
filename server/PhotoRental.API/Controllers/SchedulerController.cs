@@ -32,7 +32,7 @@ public class SchedulerController : ControllerBase
         _key = configuration["Scheduler:Key"] ?? string.Empty;
     }
 
-    [HttpPost("run-scheduled")]
+    [HttpPost("scheduled-runs")]
     public async Task<IActionResult> RunScheduled([FromServices] PhotoRental.Service.Services.SaleService sales)
     {
         var provided = Request.Headers["X-Scheduler-Key"].ToString();

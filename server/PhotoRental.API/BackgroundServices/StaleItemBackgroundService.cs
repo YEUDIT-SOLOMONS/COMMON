@@ -5,7 +5,7 @@ using PhotoRental.Core.Interfaces;
 
 // בדיקת "פריט שלא הושכר 6 שבועות" (ראו StaleItemService): נבדקת לכל היותר פעם בשעה, ורק בין 09:00 ל-20:00
 // שעון ישראל (לא שולחים מיילים בלילה). האידמפוטנטיות נשמרת בפריט עצמו (חותמת "נשלח").
-// נקראת מהלולאה הפנימית וגם מ-POST /api/internal/run-scheduled (ראו SchedulerController).
+// נקראת מהלולאה הפנימית וגם מ-POST /api/internal/scheduled-runs (ראו SchedulerController).
 public class StaleItemBackgroundService : BackgroundService
 {
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);

@@ -19,23 +19,23 @@ public class ItemActionsController : ControllerBase
     }
 
     [HttpGet("{itemId}")]
-    public async Task<IActionResult> Get(string itemId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> Get([FromRoute] string itemId, [FromQuery(Name = "t")] string? token)
     {
         if (!await _staleItemService.ValidateTokenAsync(itemId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         var view = await _staleItemService.GetActionViewAsync(itemId);
         return view is null ? NotFound(new { Message = "הפריט לא נמצא" }) : Ok(view);
     }
 
-    [HttpPost("{itemId}/available")]
-    public async Task<IActionResult> Available(string itemId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{itemId}/availability-confirmation")]
+    public async Task<IActionResult> Available([FromRoute] string itemId, [FromQuery(Name = "t")] string? token)
     {
         if (!await _staleItemService.ValidateTokenAsync(itemId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         await _staleItemService.ConfirmAvailableAsync(itemId);
         return NoContent();
     }
 
-    [HttpPost("{itemId}/remove")]
-    public async Task<IActionResult> Remove(string itemId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{itemId}/removal")]
+    public async Task<IActionResult> Remove([FromRoute] string itemId, [FromQuery(Name = "t")] string? token)
     {
         if (!await _staleItemService.ValidateTokenAsync(itemId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         try

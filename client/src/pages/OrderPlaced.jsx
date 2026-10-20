@@ -375,7 +375,7 @@ export function OrderPlaced() {
           </div>
           <div hidden={first.isLocation}>
             <dt>קבלת הפריט</dt>
-            <dd>{isDelivery ? (first.expressDelivery && String(first.startDate).slice(0, 10) <= String(first.loanDate ?? '').slice(0, 10) ? 'משלוח אקספרס' : 'משלוח') : 'איסוף עצמי'}</dd>
+            <dd>{isDelivery ? (first.expressDelivery ? 'משלוח אקספרס' : 'משלוח') : 'איסוף עצמי'}</dd>
           </div>
           <div hidden={first.isLocation}>
             <dt>החזרת הפריט</dt>

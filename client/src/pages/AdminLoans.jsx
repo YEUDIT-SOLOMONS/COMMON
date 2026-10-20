@@ -105,7 +105,6 @@ export function AdminLoans() {
                   </td>
                   <td>
                     <LoanStatusBadge status={r.status} />
-                    {r.returnedBy && <span className="admin-call-note"> · {r.returnedBy}</span>}
                   </td>
                   <td>
                     {paymentMethodLabel(r.paymentMethod)}

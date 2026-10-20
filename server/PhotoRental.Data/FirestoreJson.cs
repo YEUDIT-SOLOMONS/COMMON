@@ -22,6 +22,16 @@ public static class FirestoreJson
 
     public static JsonObject BooleanField(bool value) => new() { ["booleanValue"] = value };
 
+    public static JsonObject IntegerField(long value) => new() { ["integerValue"] = value.ToString(CultureInfo.InvariantCulture) };
+
+    public static long GetLong(JsonObject? fields, string name)
+    {
+        var node = fields?[name];
+        if (node?["integerValue"]?.GetValue<string>() is { } raw && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+        return (long)(node?["doubleValue"]?.GetValue<double>() ?? 0);
+    }
+
     // תאריך/שעה נשמרים כמחרוזת RFC 3339 ב-UTC, כפי שדורש Firestore REST API עבור timestampValue
     public static JsonObject TimestampField(DateTime value) =>
         new() { ["timestampValue"] = value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) };

@@ -85,9 +85,10 @@ public class FavoriteService : IFavoriteService
             return;
 
         var baseUrl = _client.BaseUrl.TrimEnd('/');
+        var watchedItems = await _items.GetByIdsAsync(watchers.Select(w => w.ItemId));
         foreach (var group in watchers.GroupBy(w => w.ItemId))
         {
-            var item = await _items.GetByIdAsync(group.Key);
+            var item = watchedItems.GetValueOrDefault(group.Key);
             var gone = item is null || item.DeletedAtUtc is not null;
             if (!gone && item!.Status != CopyStatus.Available)
                 continue;

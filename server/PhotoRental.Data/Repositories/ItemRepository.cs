@@ -1,6 +1,7 @@
 namespace PhotoRental.Data.Repositories;
 
 using System.Text.Json.Nodes;
+using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
 using PhotoRental.Core.Enums;
 using PhotoRental.Core.Interfaces;
@@ -22,9 +23,39 @@ public class ItemRepository : IItemRepository
         return documents.Select(ToEntity).ToList();
     }
 
-    public async Task<Item?> GetByIdAsync(string id)
+    public async Task<(IReadOnlyList<Item> Items, int TotalCount)> GetPageAsync(ItemPageQueryDto query, CancellationToken ct = default)
     {
-        var document = await _firebase.GetDocumentAsync(CollectionName, id);
+        var filters = new List<JsonObject>
+        {
+            FirebaseDbContext.IsNullFilter(nameof(Item.DeletedAtUtc)),
+            FirebaseDbContext.IsNullFilter(nameof(Item.SoldAtUtc))
+        };
+        if (!string.IsNullOrWhiteSpace(query.CategoryId))
+            filters.Add(FirebaseDbContext.EqualsFilter(nameof(Item.CategoryId), FirestoreJson.StringField(query.CategoryId)));
+
+        (string, bool)[] orderBy = query.Sort switch
+        {
+            "price" => new[] { (nameof(Item.DailyPrice), false), ("__name__", false) },
+            "name" => new[] { (nameof(Item.Name), false), ("__name__", false) },
+            _ => new[] { (nameof(Item.CreatedAtUtc), true), ("__name__", true) }
+        };
+
+        var pageTask = _firebase.QueryPageAsync(CollectionName, filters, orderBy, (query.Page - 1) * query.PageSize, query.PageSize, ct);
+        var countTask = _firebase.CountAsync(CollectionName, filters, ct);
+        await Task.WhenAll(pageTask, countTask);
+
+        return (pageTask.Result.Select(ToEntity).ToList(), countTask.Result);
+    }
+
+    public async Task<IReadOnlyDictionary<string, Item>> GetByIdsAsync(IEnumerable<string> ids, CancellationToken ct = default)
+    {
+        var documents = await _firebase.BatchGetAsync(CollectionName, ids, ct);
+        return documents.Select(ToEntity).Where(i => i.Id is not null).ToDictionary(i => i.Id!);
+    }
+
+    public async Task<Item?> GetByIdAsync(string id, CancellationToken ct = default)
+    {
+        var document = await _firebase.GetDocumentAsync(CollectionName, id, ct);
         return document is null ? null : ToEntity(document);
     }
 
@@ -139,7 +170,8 @@ public class ItemRepository : IItemRepository
             [nameof(Item.StaleNoticeSentAtUtc)] = FirestoreJson.TimestampOrNullField(item.StaleNoticeSentAtUtc),
             [nameof(Item.StaleActionToken)] = FirestoreJson.StringOrNullField(item.StaleActionToken),
             [nameof(Item.DeletedAtUtc)] = FirestoreJson.TimestampOrNullField(item.DeletedAtUtc),
-            [nameof(Item.RentalCount)] = FirestoreJson.DoubleOrNullField(item.RentalCount)
+            [nameof(Item.RentalCount)] = FirestoreJson.DoubleOrNullField(item.RentalCount),
+            [nameof(Item.Version)] = FirestoreJson.IntegerField(item.Version)
         };
     }
 
@@ -150,6 +182,8 @@ public class ItemRepository : IItemRepository
         return new Item
         {
             Id = FirestoreJson.ExtractDocumentId(document),
+            Version = FirestoreJson.GetLong(fields, nameof(Item.Version)),
+            ConcurrencyToken = document["updateTime"]?.GetValue<string>(),
             Name = FirestoreJson.GetString(fields, nameof(Item.Name)),
             Description = FirestoreJson.GetString(fields, nameof(Item.Description)),
             DailyPrice = (decimal)FirestoreJson.GetDouble(fields, nameof(Item.DailyPrice)),

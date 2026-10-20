@@ -1,42 +1,29 @@
-# ===== סודות - לעולם לא לגיט =====
-**/firebase-key.json
-*.pem
-*.p12
-**/appsettings.Development.json
-client/.env
-client/.env.local
-client/.env.*.local
-server/PhotoRental.API/appsettings.Local.json
-
-# ===== תוצרי בנייה ותלויות =====
+# ===== בנייה ותלויות =====
 **/bin/
 **/obj/
 **/node_modules/
 client/dist/
-client/.firebase/
-*.zip
+TestResults/
+*.user
+.vs/
+.vscode/
+.idea/
+
+# ===== סודות =====
+**/firebase-key.json
+**/*-key.json
+**/secrets.json
+**/appsettings.*.local.json
+**/appsettings.Local.json
+*.pfx
+*.p12
+client/.env
+client/.env.local
+client/.env.*.local
 
 # ===== לוגים =====
 server/PhotoRental.API/Logs/
+server/PhotoRental.API/logs/
+*-debug.log
 *.log
-
-# ===== סביבת עבודה מקומית =====
-.vs/
-.vscode/
-!client/.vscode/extensions.json
-.idea/
-*.user
-*.suo
-.claude/
-.DS_Store
-Thumbs.db
-
-# ===== קבצים פרטיים שאינם חלק מהפרויקט =====
-_private/
-marketing/gif-frames/_profile/
-
-# חומרי שיווק - נשמרים במחשב בלבד
-marketing/
-
-# סקריפטי פריסה פנימיים - נשמרים במחשב בלבד
-server/deploy/
+.firebase/

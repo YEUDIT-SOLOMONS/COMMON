@@ -163,7 +163,6 @@ export function RentModal({
     setReturnTime(value)
     setReturnTimeTouched(true)
   }
-  const [ownerEmailedInstead, setOwnerEmailedInstead] = useState(false)
   const [expressDelivery, setExpressDelivery] = useState(false)
 
   function handleStartDateChange(value) {
@@ -254,10 +253,10 @@ export function RentModal({
   // מחיר אקספרס 0 = חברת השילוח לא נתנה הצעה לאקספרס (ראו GetPackageShippingService) - מסתירים את האפשרות
   // וגם: אקספרס מוצע רק אם הוא באמת יגיע עד השעה שביקשה (ראו expressArrival מהשרת)
   // כשאין משלוח רגיל לכתובת/לתאריך - מציעים אקספרס גם ביום עתידי (השליח מוזמן ביום ההשכרה)
-  const outOfRange = Boolean(shippingQuote?.regularOutOfRange)
   const regularUnavailable = !expressDay && shippingQuote?.regularArrival?.possible === false && Boolean(shippingQuote?.expressArrival)
-  const expressQuoteOk = Boolean(shippingQuote) && shippingQuote.expressPrice > 0 && shippingQuote.expressArrival?.possible !== false
-  const showExpressOption = !outOfRange && (expressDay ? !shippingQuote || expressQuoteOk : deliveryMethod === 'Delivery' && expressQuoteOk)
+  const showExpressOption =
+    (expressDay || regularUnavailable) &&
+    (!shippingQuote || (shippingQuote.expressPrice > 0 && shippingQuote.expressArrival?.possible !== false))
 
   useEffect(() => {
     if (!needsDeliveryAddress || !isDeliveryStreetComplete || !isReturnStreetComplete) {
@@ -750,10 +749,7 @@ export function RentModal({
     if (callStatus !== 'NoAnswer' || !callId || callIsSimulated) return
     availabilityCallsApi
       .retryLater(callId)
-      .then((r) => {
-        setRetryId(r?.retryId ?? null)
-        setOwnerEmailedInstead(!r?.retryId)
-      })
+      .then((r) => setRetryId(r?.retryId ?? null))
       .catch(() => {})
   }, [callStatus, callId, callIsSimulated])
 
@@ -811,7 +807,7 @@ export function RentModal({
     if (deliveryMethod !== 'SelfPickup' && paymentMethod === 'Cash') setPaymentMethod(null)
   }, [deliveryMethod, paymentMethod])
 
-  const isExpressSelected = outOfRange || (showExpressOption && expressDelivery)
+  const isExpressSelected = showExpressOption && expressDelivery
   // כל עוד לא התקבלה הצעת מחיר אמיתית למשלוח - אין מחיר משלוח ידוע, ולכן גם אי אפשר להמשיך
   // (ראו deliveryQuoteReady) - לא מציגים סכום מנוחש שעלול לא להתאים למה שבאמת ייגבה
   const deliveryFee =
@@ -870,7 +866,7 @@ export function RentModal({
       sameDayReturn,
       startTime,
       deliveryMethod,
-      expressDelivery: isExpressSelected,
+      expressDelivery: showExpressOption && expressDelivery,
       returnMethod,
       returnTime,
       termsAccepted,
@@ -972,7 +968,7 @@ export function RentModal({
       setSuccessTracking(isBatchOrder ? created[0] : created)
       onRented?.()
     } catch (err) {
-      setSubmitError(err.message)
+      setSubmitError(err.status === 409 ? `הפריט נתפס ממש עכשיו: ${err.message}` : err.message)
     } finally {
       setSubmitting(false)
     }
@@ -1516,11 +1512,7 @@ export function RentModal({
                 </div>
               ))}
 
-            {callStatus === 'NoAnswer' && (ownerEmailedInstead && !callIsSimulated ? (
-              <p className="state-message state-error">
-                הצלמת בקהילה ענתה לשיחה אבל לא אישרה. שלחנו לה מייל לתשובה, ונעדכן אותך במייל ברגע שתענה.
-              </p>
-            ) : callIsSimulated || retryCanceled ? (
+            {callStatus === 'NoAnswer' && (callIsSimulated || retryCanceled ? (
               <p className="state-message state-error">
                 {retryCanceled ? 'הניסיון החוזר בוטל.' : 'הצלמת בקהילה לא ענתה לשיחה.'}
               </p>
@@ -1643,11 +1635,7 @@ export function RentModal({
                   checked={deliveryMethod === 'Delivery'}
                   onChange={() => setDeliveryMethod('Delivery')}
                 />
-                {outOfRange && isStartingToday ? 'משלוח אקספרס' : showExpressOption && !expressDay ? 'משלוח רגיל' : 'משלוח'}
-                {shippingQuote ? ` (₪${outOfRange ? shippingQuote.expressPrice : shippingQuote.regularPrice})` : ''}
-                {showExpressOption && !expressDay && shippingQuote?.regularArrival?.timeRange
-                  ? ` · הגעה בין ${shippingQuote.regularArrival.timeRange}`
-                  : ''}
+                משלוח{shippingQuote ? ` (₪${shippingQuote.regularPrice})` : ''}
               </label>
             </div>
 </fieldset>
@@ -1665,15 +1653,10 @@ export function RentModal({
                     משלוח אקספרס{shippingQuote ? ` (₪${shippingQuote.expressPrice})` : ''} - קבלת הפריט תוך
                     זמן קצר, כיוון שההשכרה מתחילה היום
                   </>
-                ) : regularUnavailable ? (
+                ) : (
                   <>
                     משלוח אקספרס{shippingQuote ? ` (₪${shippingQuote.expressPrice})` : ''} - משלוח רגיל לא זמין לכתובת או
                     לתאריך האלה, ולכן השליח יוזמן ביום ההשכרה
-                  </>
-                ) : (
-                  <>
-                    משלוח אקספרס{shippingQuote ? ` (₪${shippingQuote.expressPrice})` : ''}
-                    {shippingQuote?.expressArrival?.timeRange ? ` · הגעה בין ${shippingQuote.expressArrival.timeRange}` : ''}
                   </>
                 )}
                 {shippingQuote?.expressArrival?.estimatedArrival && (
@@ -1798,9 +1781,7 @@ export function RentModal({
                         : shippingQuote
                           ? [
                               deliveryMethod === 'Delivery'
-                                ? outOfRange
-                                  ? `${expressDay ? 'משלוח אקספרס' : 'משלוח'}: ₪${shippingQuote.expressPrice}`
-                                  : `משלוח: ₪${shippingQuote.regularPrice} (רגיל) · ₪${shippingQuote.expressPrice} (אקספרס)`
+                                ? `משלוח: ₪${shippingQuote.regularPrice} (רגיל) · ₪${shippingQuote.expressPrice} (אקספרס)`
                                 : null,
                               returnMethod === 'CourierPickup' ? `איסוף החזרה בשליח: ₪${shippingQuote.returnPrice}` : null,
                             ]
@@ -1977,7 +1958,7 @@ export function RentModal({
                     <dt>קבלת הפריט</dt>
                     <dd>
                       {deliveryMethod === 'Delivery'
-                        ? `${isExpressSelected && (!outOfRange || expressDay) ? 'משלוח אקספרס' : 'משלוח'} אל ${deliveryAddressText}`
+                        ? `${isExpressSelected ? 'משלוח אקספרס' : 'משלוח'} אל ${deliveryAddressText}`
                         : 'איסוף עצמי'}
                     </dd>
                   </div>

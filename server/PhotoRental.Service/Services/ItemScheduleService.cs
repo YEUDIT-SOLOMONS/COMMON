@@ -1,6 +1,7 @@
 namespace PhotoRental.Service.Services;
 
 using System.Globalization;
+using AutoMapper;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
 using PhotoRental.Core.Enums;
@@ -9,14 +10,16 @@ using PhotoRental.Core.Interfaces;
 
 public class ItemScheduleService : IItemScheduleService
 {
+    private readonly IMapper _mapper;
     private static readonly TimeSpan Horizon = TimeSpan.FromDays(400);
 
     private readonly ILoanRepository _loans;
     private readonly IItemRepository _items;
     private readonly IItemBlockRepository _blocks;
 
-    public ItemScheduleService(ILoanRepository loans, IItemRepository items, IItemBlockRepository blocks)
+    public ItemScheduleService(ILoanRepository loans, IItemRepository items, IItemBlockRepository blocks, IMapper mapper)
     {
+        _mapper = mapper;
         _loans = loans;
         _items = items;
         _blocks = blocks;
@@ -122,13 +125,7 @@ public class ItemScheduleService : IItemScheduleService
             dto.Busy.Add(blocked);
             dto.Blocked.Add(blocked);
             if (isOwner)
-                dto.Blocks.Add(new ItemBlockDto
-                {
-                    Id = block.Id ?? string.Empty,
-                    From = block.From.ToString("yyyy-MM-dd"),
-                    To = block.To.ToString("yyyy-MM-dd"),
-                    Note = block.Note
-                });
+                dto.Blocks.Add(_mapper.Map<ItemBlockDto>(block));
         }
 
         if (item.Status == CopyStatus.Maintenance)
@@ -229,7 +226,7 @@ public class ItemScheduleService : IItemScheduleService
             Note = note,
             CreatedAtUtc = DateTime.UtcNow
         });
-        return new ItemBlockDto { Id = created.Id ?? string.Empty, From = dto.From, To = dto.To, Note = note };
+        return _mapper.Map<ItemBlockDto>(created);
     }
 
     public async Task DeleteBlockAsync(string itemId, string blockId, string userId)

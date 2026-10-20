@@ -433,17 +433,7 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
         public AvailabilityCallStartDto Request { get; set; } = new();
     }
 
-    // הניסיון החוזר האוטומטי ובקשת השוכרת "לנסות שוב" יכולים להגיע באותה שנייה - נעילה כדי שייקבע רק ניסיון אחד
-    private static readonly SemaphoreSlim RetryLock = new(1, 1);
-
     public async Task<string?> ScheduleRetryAsync(string callId, string renterId, string? notify = null)
-    {
-        await RetryLock.WaitAsync();
-        try { return await ScheduleRetryCoreAsync(callId, renterId, notify); }
-        finally { RetryLock.Release(); }
-    }
-
-    private async Task<string?> ScheduleRetryCoreAsync(string callId, string renterId, string? notify)
     {
         var session = GetSessionOrThrow(callId);
         if (session.Status is not (AvailabilityCallStatus.NoAnswer or AvailabilityCallStatus.OwnerQuiet)
@@ -474,19 +464,6 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
         var item = await _itemRepository.GetByIdAsync(session.ItemId);
         if (owner is null || item is null)
             return null;
-
-        // ענתה ולא הקישה - נשלח לה מייל לתשובה במקום שיחה חוזרת
-        if (session.Status == AvailabilityCallStatus.NoAnswer && !string.IsNullOrEmpty(session.LogId)
-            && await _callLogs.GetByIdAsync(session.LogId) is { Status: "Answered" })
-        {
-            var answeredRecord = string.IsNullOrEmpty(session.RequestId) ? null : await _requests.GetByIdAsync(session.RequestId);
-            if (answeredRecord is not null && notify is "phone" or "email" && answeredRecord.Notify != notify)
-            {
-                answeredRecord.Notify = notify;
-                await _requests.UpdateAsync(answeredRecord);
-            }
-            return null;
-        }
 
         var log = await _callLogs.CreateAsync(new CallLog
         {
@@ -618,13 +595,6 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
     // אם גם הניסיון החוזר לא נענה - מייל עם כפתור תשובה למשכירה 12 דקות אחריו
     public async Task CallEndedWithoutAnswerAsync(string logId)
     {
-        await RetryLock.WaitAsync();
-        try { await CallEndedWithoutAnswerCoreAsync(logId); }
-        finally { RetryLock.Release(); }
-    }
-
-    private async Task CallEndedWithoutAnswerCoreAsync(string logId)
-    {
         var log = await _callLogs.GetByIdAsync(logId);
         if (log is null || log.Kind != "Availability" || string.IsNullOrEmpty(log.ItemId))
             return;
@@ -644,19 +614,6 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
         var item = await _itemRepository.GetByIdAsync(record.ItemId);
         if (owner is null || item is null)
             return;
-
-        // ענתה ולא הקישה - מייל התשובה מיד, בלי שיחה חוזרת
-        if (log.Status == "Answered")
-        {
-            if (!string.IsNullOrEmpty(record.RetryLogId) && await _callLogs.GetByIdAsync(record.RetryLogId) is { Status: RetryScheduled } pending)
-            {
-                pending.Status = "Canceled";
-                pending.Detail = "בוטל - ענתה ולא הקישה, נשלח מייל לתשובה";
-                await _callLogs.UpdateAsync(pending);
-            }
-            await SendOwnerAnswerEmailAsync(record, item, owner, quietHours: false, answeredNoKey: true);
-            return;
-        }
 
         if (string.IsNullOrEmpty(record.RetryLogId))
         {
@@ -1044,7 +1001,7 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
         start == end ? CallMessages.SpokenDate(start) ?? string.Empty : $"{CallMessages.SpokenDate(start)} עד {CallMessages.SpokenDate(end)}";
 
     // מייל למשכירה עם כפתור תשובה (פנוי / תפוס) - כשלא ענתה לשיחה, או כשהבקשה הגיעה בשעות השקטות שלה
-    private async Task<bool> SendOwnerAnswerEmailAsync(AvailabilityRequest record, Item item, User owner, bool quietHours, bool answeredNoKey = false)
+    private async Task<bool> SendOwnerAnswerEmailAsync(AvailabilityRequest record, Item item, User owner, bool quietHours)
     {
         if (!_email.IsEnabled || record.OwnerEmailed || string.IsNullOrWhiteSpace(owner.Email))
             return false;
@@ -1056,9 +1013,7 @@ public class TwilioAvailabilityCallService : IAvailabilityCallService
                    $"<p>צלמת מהקהילה מבקשת לשכור את <strong>{H(LoanText.WithUnits(item.Name, RequestedUnits(record)))}</strong> ({H(DatesText(record.StartDate, record.ReturnDate))}).</p>" +
                    (quietHours
                        ? "<p>לא התקשרנו אלייך כי זה בשעות השקטות שלך. אם יש לך רגע - אפשר לענות כאן:</p>"
-                       : answeredNoKey
-                           ? "<p>התקשרנו אלייך אבל לא נקלטה תשובה. אפשר לענות כאן:</p>"
-                           : "<p>ניסינו להתקשר אלייך ולא הצלחנו. אפשר לענות כאן:</p>") +
+                       : "<p>ניסינו להתקשר אלייך ולא הצלחנו. אפשר לענות כאן:</p>") +
                    $"<p><a href=\"{H(link)}\" style=\"display:inline-block;background:#a8e29c;border:1px solid #000;border-radius:20px;padding:10px 20px;color:#000;text-decoration:none\"><strong>האם הפריט פנוי? לתשובה</strong></a></p>" +
                    "<p>common</p></div>";
         try

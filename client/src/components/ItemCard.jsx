@@ -43,7 +43,7 @@ export function ItemCard({ item, onClick, style, categoryChains, rating }) {
         <div className="item-card-footer">
           <span className="item-price">
             {item.forSale ? (
-              <Price amount={item.salePrice} unit="" />
+              <Price amount={item.salePrice} unit=" · למכירה" />
             ) : item.isLocation ? (
               <Price amount={item.hourlyPrice} unit=" / שעה" />
             ) : (

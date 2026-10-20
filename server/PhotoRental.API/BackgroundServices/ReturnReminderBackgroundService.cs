@@ -58,7 +58,7 @@ public class ReturnReminderBackgroundService : BackgroundService
         }
     }
 
-    // סבב בדיקה אחד. נקרא מהלולאה הפנימית, וגם מ-POST /api/internal/run-scheduled (ראו SchedulerController)
+    // סבב בדיקה אחד. נקרא מהלולאה הפנימית, וגם מ-POST /api/internal/scheduled-runs (ראו SchedulerController)
     public async Task RunRoundAsync()
     {
         await Gate.WaitAsync();

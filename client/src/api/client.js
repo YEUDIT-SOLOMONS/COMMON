@@ -24,6 +24,7 @@ const FRIENDLY_ERRORS = {
   401: 'יש להתחבר כדי להמשיך',
   403: 'אין הרשאה לפעולה הזו',
   404: 'המידע המבוקש לא נמצא',
+  409: 'מישהי אחרת הספיקה לפניך - הפריט כבר נתפס. נסי שוב או בחרי תאריכים אחרים.',
   429: 'יותר מדי ניסיונות. נסו שוב בעוד כמה דקות.',
 }
 
@@ -134,7 +135,9 @@ async function request(path, { method = 'GET', body, auth = true, _retried = fal
 
   if (!response.ok) {
     const message = (data && (data.message || data.Message)) || FRIENDLY_ERRORS[response.status] || 'אירעה תקלה. נסו שוב בעוד רגע.'
-    throw new Error(message)
+    const error = new Error(message)
+    error.status = response.status
+    throw error
   }
 
   return data

@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# סודות והגדרות פריסה - לא נכנסים ל-repo
+.env
+.env.*
+!.env.example
+.firebase/
+.firebaserc
+firebase.json

@@ -3,6 +3,7 @@ namespace PhotoRental.Service.Services;
 using System.Globalization;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
+using PhotoRental.Core.Exceptions;
 using PhotoRental.Core.Enums;
 using PhotoRental.Core.Helpers;
 using PhotoRental.Core.Interfaces;
@@ -500,13 +501,13 @@ public class LoanService : ILoanService
         };
     }
 
-    public async Task MarkReturnedFromLinkAsync(string loanId, string? returnedBy = null)
+    public async Task MarkReturnedFromLinkAsync(string loanId)
     {
         var loan = await _loanRepository.GetByIdAsync(loanId)
             ?? throw new KeyNotFoundException("ההשכרה לא נמצאה");
 
         if (loan.Status == LoanStatus.Active)
-            await ReturnLoanAsync(loanId, returnedBy ?? "משכירה · קישור במייל");
+            await ReturnLoanAsync(loanId);
     }
 
     public async Task<NotReturnedResultDto> ReportNotReturnedAsync(string loanId)
@@ -712,26 +713,11 @@ public class LoanService : ILoanService
         var quote = await _shippingService.GetQuoteAsync(ShippingAddressDto.FromFreeText(pickupLocation), dropoff);
 
         quote.ReturnPrice = quote.RegularPrice;
-        var returnOutOfRange = quote.RegularOutOfRange;
         if (IsDeliveryAddressComplete(request.ReturnPickupAddress))
-        {
-            try
-            {
-                var returnQuote = await _shippingService.GetQuoteAsync(
-                    ShippingAddressDto.FromFreeText(pickupLocation), ShippingAddressDto.FromDetails(request.ReturnPickupAddress!));
-                quote.ReturnPrice = returnQuote.RegularPrice;
-                returnOutOfRange = returnQuote.RegularOutOfRange;
-            }
-            catch (InvalidOperationException ex) when (ex.Message == ShippingMessages.OutOfRange)
-            {
-                quote.ReturnPrice = 0;
-                returnOutOfRange = true;
-            }
-        }
+            quote.ReturnPrice = (await _shippingService.GetQuoteAsync(
+                ShippingAddressDto.FromFreeText(pickupLocation), ShippingAddressDto.FromDetails(request.ReturnPickupAddress!))).RegularPrice;
 
-        if (returnOutOfRange)
-            quote.ReturnArrival = new ArrivalCheckDto { Possible = false, Verified = true, Message = ShippingMessages.ReturnOutOfRange };
-        else if (DateTime.TryParseExact(request.ReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var returnDay)
+        if (DateTime.TryParseExact(request.ReturnDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var returnDay)
             && DeliveryDeadline(request.ReturnTime) is { } returnBy)
         {
             var returnFrom = IsDeliveryAddressComplete(request.ReturnPickupAddress) ? ShippingAddressDto.FromDetails(request.ReturnPickupAddress!) : dropoff;
@@ -744,21 +730,15 @@ public class LoanService : ILoanService
         if (deadline is { } by
             && DateTime.TryParseExact(request.StartDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
         {
-            if (quote.RegularOutOfRange)
-                quote.RegularArrival = new ArrivalCheckDto { Possible = false, Verified = true, Message = ShippingMessages.OutOfRange };
-            else
-                quote.RegularArrival = await _shippingService.CheckArrivalAsync(ShippingAddressDto.FromFreeText(pickupLocation), dropoff, day, by, isExpress: false);
+            quote.RegularArrival = await _shippingService.CheckArrivalAsync(ShippingAddressDto.FromFreeText(pickupLocation), dropoff, day, by, isExpress: false);
             if (day.Date == IsraelTime.Now.Date && quote.ExpressPrice > 0)
                 quote.ExpressArrival = await _shippingService.CheckArrivalAsync(ShippingAddressDto.FromFreeText(pickupLocation), dropoff, day, by, isExpress: true);
-            else if (day.Date > IsraelTime.Now.Date && quote.ExpressPrice > 0)
+            else if (day.Date > IsraelTime.Now.Date && quote.ExpressPrice > 0 && quote.RegularArrival is { Possible: false })
                 quote.ExpressArrival = new ArrivalCheckDto
                 {
                     Possible = true,
                     Verified = true,
-                    TimeRange = $"{ExpressDispatchTime(day, request.StartTime):HH:mm}-{by:hh\\:mm}",
-                    Message = quote.RegularOutOfRange
-                        ? $"השליח יוזמן ביום ההשכרה ויגיע עד {by:hh\\:mm}"
-                        : $"משלוח אקספרס: השליח יוזמן ביום ההשכרה ויגיע עד {by:hh\\:mm}"
+                    Message = $"משלוח אקספרס: השליח יוזמן ביום ההשכרה ויגיע עד {by:hh\\:mm}"
                 };
         }
 
@@ -787,8 +767,6 @@ public class LoanService : ILoanService
         RequireOwnerCourierDetails(owner);
         var pickupLocation = $"{item.Address}, {item.City}".Trim(',', ' ');
         var quote = await _shippingService.GetQuoteAsync(ShippingAddressDto.FromFreeText(pickupLocation), ShippingAddressDto.FromDetails(address));
-        if (quote.RegularPrice <= 0)
-            throw new InvalidOperationException(ShippingMessages.OutOfRange);
         return quote.RegularPrice;
     }
 
@@ -844,18 +822,32 @@ public class LoanService : ILoanService
         return line;
     }
 
-    public async Task<LoanResponseDto> CreateAsync(LoanRequestDto request)
+    // שמירת ההשכרות מול ה-concurrency token של הפריטים. בדיקת הזמינות (EnsureFreeAsync) התבססה על
+    // הגרסה שנקראה - אם הפריט הושכר בינתיים, השמירה נדחית ומוחזר 409
+    private async Task<IReadOnlyList<Loan>> SaveBookingsAsync(IReadOnlyList<(Loan Loan, Item Item)> bookings, CancellationToken ct)
+    {
+        try
+        {
+            return await _loanRepository.CreateWithItemCheckAsync(bookings, ct);
+        }
+        catch (ConcurrencyConflictException ex)
+        {
+            throw new ConcurrencyConflictException("הפריט נתפס על ידי משתמשת אחרת ממש עכשיו. נסי שוב או בחרי תאריכים אחרים.", ex.ResourceId, ex);
+        }
+    }
+
+    public async Task<LoanResponseDto> CreateAsync(LoanRequestDto request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.ItemId))
             throw new ArgumentException("יש לציין מזהה פריט (ItemId)");
         if (string.IsNullOrWhiteSpace(request.BorrowerId))
             throw new ArgumentException("יש לציין מזהה שוכר (BorrowerId)");
 
-        var item = await _itemRepository.GetByIdAsync(request.ItemId)
+        var item = await _itemRepository.GetByIdAsync(request.ItemId, ct)
             ?? throw new KeyNotFoundException("הפריט המבוקש לא נמצא");
         if (item.DeletedAtUtc is not null) throw new KeyNotFoundException("הפריט המבוקש לא נמצא");
 
-        var borrower = await _userRepository.GetByIdAsync(request.BorrowerId)
+        var borrower = await _userRepository.GetByIdAsync(request.BorrowerId, ct)
             ?? throw new KeyNotFoundException("השוכר המבוקש לא נמצא");
         RequireOrderPrerequisites(request.TermsAccepted, request.PhoneConfirmed, borrower);
 
@@ -908,7 +900,7 @@ public class LoanService : ILoanService
         var ownerLocation = $"{item.Address}, {item.City}".Trim(',', ' ');
         // הערות הכתובת של המשכירה (אם יש) נשלחות לשליח - נטענות רק כשיש מעורבות שליח
         var ownerForNotes = needsDeliveryAddress && !string.IsNullOrEmpty(item.OwnerId)
-            ? await _userRepository.GetByIdAsync(item.OwnerId)
+            ? await _userRepository.GetByIdAsync(item.OwnerId, ct)
             : null;
         if (needsDeliveryAddress) RequireOwnerCourierDetails(ownerForNotes);
         var ownerAddress = OwnerShippingAddress(ownerLocation, ownerForNotes);
@@ -925,15 +917,11 @@ public class LoanService : ILoanService
             if (expressDelivery && quote.ExpressPrice <= 0)
                 throw new ArgumentException("משלוח אקספרס אינו זמין כרגע - נא לבחור משלוח רגיל");
             deliveryFee = expressDelivery ? quote.ExpressPrice : quote.RegularPrice;
-            if (deliveryFee <= 0)
-                throw new InvalidOperationException(ShippingMessages.OutOfRange);
         }
 
         var returnFee = returnMethod == ReturnMethod.CourierPickup
             ? (await _shippingService.GetQuoteAsync(ownerAddress, returnPickupAddress!)).RegularPrice
             : 0m;
-        if (returnMethod == ReturnMethod.CourierPickup && returnFee <= 0)
-            throw new InvalidOperationException(ShippingMessages.ReturnOutOfRange);
 
         // ===== אמצעי תשלום =====
         var paymentMethod = ParsePaymentMethod(request.PaymentMethod);
@@ -941,7 +929,7 @@ public class LoanService : ILoanService
         if (paymentMethod == PaymentMethod.Cash && deliveryMethod != DeliveryMethod.SelfPickup)
             throw new ArgumentException("תשלום במזומן אפשרי רק באיסוף עצמי - יש לבחור אמצעי תשלום אחר");
 
-        User? owner = !string.IsNullOrEmpty(item.OwnerId) ? await _userRepository.GetByIdAsync(item.OwnerId) : null;
+        User? owner = !string.IsNullOrEmpty(item.OwnerId) ? await _userRepository.GetByIdAsync(item.OwnerId, ct) : null;
         var paymentStatus = PaymentStatus.Pending;
         string? paymentTransactionId = null;
         string? paymentProofId = null;
@@ -1022,7 +1010,7 @@ public class LoanService : ILoanService
         loan.ShippingPaymentId = shippingCharge.PaymentId;
         loan.ShippingChargedAmount = shippingCharge.Status == "Charged" ? shippingFee : 0m;
 
-        var created = await _loanRepository.CreateAsync(loan);
+        var created = (await SaveBookingsAsync(new[] { (loan, item) }, ct))[0];
 
         // סטטוס הפריט: "מושכר" רק כשההשכרה כבר התחילה; הזמנה עתידית לא חוסמת השכרות בתאריכים אחרים
         await _schedule.RefreshStatusAsync(item.Id!, item.RentalCount is { } rentals ? rentals + 1 : null);
@@ -1041,7 +1029,7 @@ public class LoanService : ILoanService
         return MapToResponse(created, owner);
     }
 
-    public async Task<IReadOnlyList<LoanResponseDto>> CreateBatchAsync(LoanBatchRequestDto request)
+    public async Task<IReadOnlyList<LoanResponseDto>> CreateBatchAsync(LoanBatchRequestDto request, CancellationToken ct = default)
     {
         var itemIds = request.ItemIds.Distinct().ToList();
 
@@ -1051,9 +1039,10 @@ public class LoanService : ILoanService
             throw new ArgumentException("יש לציין מזהה שוכר (BorrowerId)");
 
         var items = new List<Item>();
+        var loaded = await _itemRepository.GetByIdsAsync(itemIds, ct);
         foreach (var itemId in itemIds)
         {
-            var item = await _itemRepository.GetByIdAsync(itemId)
+            var item = loaded.GetValueOrDefault(itemId)
                 ?? throw new KeyNotFoundException("אחד הפריטים בהזמנה לא נמצא");
             if (item.DeletedAtUtc is not null) throw new KeyNotFoundException("אחד הפריטים בהזמנה לא נמצא");
 
@@ -1066,7 +1055,7 @@ public class LoanService : ILoanService
         if (items.Select(i => i.OwnerId).Distinct().Count() > 1)
             throw new ArgumentException("כל הפריטים בהזמנה אחת חייבים להיות מאותה צלמת בקהילה");
 
-        var borrower = await _userRepository.GetByIdAsync(request.BorrowerId)
+        var borrower = await _userRepository.GetByIdAsync(request.BorrowerId, ct)
             ?? throw new KeyNotFoundException("השוכר המבוקש לא נמצא");
         RequireOrderPrerequisites(request.TermsAccepted, request.PhoneConfirmed, borrower);
 
@@ -1119,15 +1108,11 @@ public class LoanService : ILoanService
             if (expressDelivery && quote.ExpressPrice <= 0)
                 throw new ArgumentException("משלוח אקספרס אינו זמין כרגע - נא לבחור משלוח רגיל");
             deliveryFee = expressDelivery ? quote.ExpressPrice : quote.RegularPrice;
-            if (deliveryFee <= 0)
-                throw new InvalidOperationException(ShippingMessages.OutOfRange);
         }
 
         var returnFee = returnMethod == ReturnMethod.CourierPickup
             ? (await _shippingService.GetQuoteAsync(batchOwnerAddress, batchReturnPickupAddress!)).RegularPrice
             : 0m;
-        if (returnMethod == ReturnMethod.CourierPickup && returnFee <= 0)
-            throw new InvalidOperationException(ShippingMessages.ReturnOutOfRange);
 
         var paymentMethod = ParsePaymentMethod(request.PaymentMethod);
 
@@ -1172,6 +1157,7 @@ public class LoanService : ILoanService
 
         var orderGroupId = Guid.NewGuid().ToString("N");
         var createdLoans = new List<Loan>();
+        var pending = new List<(Loan Loan, Item Item)>();
 
         for (var i = 0; i < items.Count; i++)
         {
@@ -1217,8 +1203,13 @@ public class LoanService : ILoanService
                 ReturnProviderId = returnShipment?.ProviderId
             };
 
-            var created = await _loanRepository.CreateAsync(loan);
+            pending.Add((loan, item));
+        }
 
+        await SaveBookingsAsync(pending, ct);
+
+        foreach (var (created, item) in pending)
+        {
             await _schedule.RefreshStatusAsync(item.Id!, item.RentalCount is { } rentals ? rentals + 1 : null);
             item.Status = RequestedStart(startDate, request.StartTime) <= IsraelTime.Now ? CopyStatus.Rented : item.Status;
 
@@ -1382,7 +1373,7 @@ public class LoanService : ILoanService
         }
     }
 
-    public async Task ReturnLoanAsync(string id, string? returnedBy = null)
+    public async Task ReturnLoanAsync(string id)
     {
         var loan = await _loanRepository.GetByIdAsync(id)
             ?? throw new KeyNotFoundException("ההשכרה לא נמצאה");
@@ -1390,7 +1381,7 @@ public class LoanService : ILoanService
         if (loan.Status == LoanStatus.Cancelled)
             throw new InvalidOperationException("ההשכרה בוטלה");
 
-        await _loanRepository.UpdateStatusAsync(id, LoanStatus.Returned, DateTime.UtcNow, returnedBy);
+        await _loanRepository.UpdateStatusAsync(id, LoanStatus.Returned, DateTime.UtcNow);
 
         // איחור בהחזרה: כל יום (או חלק מיום) מעבר למועד ההחזרה מחויב כיום השכרה נוסף
         var lateDays = loan.IsLocation ? 0 : IsraelTime.LateDays(loan.ExpectedReturnDate, IsraelTime.Now);
@@ -1607,9 +1598,7 @@ public class LoanService : ILoanService
         if (!Enum.TryParse<LoanStatus>(status, ignoreCase: true, out var parsedStatus))
             throw new ArgumentException($"סטטוס לא תקין: {status}");
 
-        await _loanRepository.UpdateStatusAsync(id, parsedStatus,
-            parsedStatus == LoanStatus.Returned ? DateTime.UtcNow : null,
-            parsedStatus == LoanStatus.Returned ? "מנהלת · שינוי סטטוס" : null);
+        await _loanRepository.UpdateStatusAsync(id, parsedStatus);
     }
 
     public async Task ConfirmPaymentAsync(string id)
@@ -1648,7 +1637,7 @@ public class LoanService : ILoanService
     private static string EstimatedArrivalText(Loan loan)
     {
         var date = loan.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-        return loan.ExpressDelivery && loan.ExpressDispatchAtLocal is null
+        return loan.ExpressDelivery
             ? "משלוח אקספרס - הערכה: הגעה תוך כ-3 שעות מרגע אישור ההשכרה"
             : string.IsNullOrEmpty(loan.StartTime)
                 ? $"הערכה: הגעה ביום תחילת ההשכרה ({date})"
@@ -1693,11 +1682,9 @@ public class LoanService : ILoanService
         if (loan.DeliveryMethod == DeliveryMethod.SelfPickup)
             return "<p style=\"margin:6px 0 0\"><strong>קבלה:</strong> איסוף עצמי - השוכרת תגיע לאסוף את הפריט מהכתובת שלך.</p>";
 
-        var express = loan.ExpressDelivery && loan.ExpressDispatchAtLocal is null
+        var express = loan.ExpressDelivery
             ? "שליח אקספרס יגיע לאסוף את הפריט תוך כ-3 שעות מרגע אישור ההשכרה"
-            : loan.ExpressDispatchAtLocal is { } dispatchAt
-                ? $"שליח יגיע לאסוף את הפריט ביום תחילת ההשכרה ({loan.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}), החל מהשעה {dispatchAt:HH:mm}"
-                : $"שליח יגיע לאסוף את הפריט ביום תחילת ההשכרה ({loan.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}){(string.IsNullOrEmpty(loan.StartTime) ? string.Empty : " עד השעה " + loan.StartTime)}";
+            : $"שליח יגיע לאסוף את הפריט ביום תחילת ההשכרה ({loan.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}){(string.IsNullOrEmpty(loan.StartTime) ? string.Empty : " עד השעה " + loan.StartTime)}";
         return $"<p style=\"margin:6px 0 0\"><strong>קבלה:</strong> משלוח - {express}. נא להכין את הפריט ארוז מראש.</p>";
     }
 

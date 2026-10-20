@@ -1,13 +1,23 @@
-﻿namespace PhotoRental.Core.DTOs;
+namespace PhotoRental.Core.DTOs;
+
+using System.ComponentModel.DataAnnotations;
 
 // נשלח מהלקוח בעת הרשמה למערכת (יצירת משתמש חדש + הגדרת סיסמה).
 // אין כאן בחירת תפקיד (משכיר/שוכר) - כל חשבון יכול גם לשכור וגם לשתף ציוד משלו,
 // ראו AuthService.RegisterAsync.
 public class RegisterDto
 {
+    [Required(ErrorMessage = "יש להזין שם מלא")]
+    [StringLength(80, MinimumLength = 2)]
     public string Name { get; set; } = string.Empty;
+    [Required(ErrorMessage = "יש להזין כתובת אימייל")]
+    [EmailAddress(ErrorMessage = "כתובת האימייל אינה תקינה")]
+    [StringLength(254)]
     public string Email { get; set; } = string.Empty;
+    [StringLength(20)]
     public string Phone { get; set; } = string.Empty;
+    [Required]
+    [StringLength(128, MinimumLength = 6, ErrorMessage = "הסיסמה צריכה לכלול לפחות 6 תווים")]
     public string Password { get; set; } = string.Empty;
     public bool TermsAccepted { get; set; }
     public bool QuietHoursEnabled { get; set; }
@@ -18,7 +28,10 @@ public class RegisterDto
 // נשלח מהלקוח בעת התחברות למערכת
 public class LoginDto
 {
+    [Required(ErrorMessage = "יש להזין אימייל")]
+    [EmailAddress]
     public string Email { get; set; } = string.Empty;
+    [Required(ErrorMessage = "יש להזין סיסמה")]
     public string Password { get; set; } = string.Empty;
 }
 
@@ -37,12 +50,15 @@ public class AuthResponseDto
 // אימייל בלבד - ראו AuthService.LoginWithGoogleAsync.
 public class GoogleLoginDto
 {
+    [Required]
     public string IdToken { get; set; } = string.Empty;
 }
 
 // נשלח מהלקוח כדי לבקש איפוס סיסמה
 public class ForgotPasswordDto
 {
+    [Required]
+    [EmailAddress]
     public string Email { get; set; } = string.Empty;
 }
 
@@ -59,6 +75,9 @@ public class ForgotPasswordResponseDto
 // נשלח מהלקוח כדי להשלים איפוס סיסמה בעזרת האסימון שהתקבל מ-ForgotPasswordResponseDto
 public class ResetPasswordDto
 {
+    [Required]
     public string Token { get; set; } = string.Empty;
+    [Required]
+    [StringLength(128, MinimumLength = 6)]
     public string NewPassword { get; set; } = string.Empty;
 }

@@ -105,9 +105,6 @@ public class ShippingQuoteDto
     public decimal RegularPrice { get; set; }
     public decimal ExpressPrice { get; set; }
 
-    // משלוח רגיל (עד 20 ק"מ) לא זמין למרחק הזה - מציעים רק את המשלוח היקר
-    public bool RegularOutOfRange { get; set; }
-
     // האם המשלוח (רגיל / אקספרס) יגיע עד השעה שהשוכרת ביקשה - רק כשנשלחו תאריך ושעה בבקשה
     public ArrivalCheckDto? RegularArrival { get; set; }
     public ArrivalCheckDto? ExpressArrival { get; set; }

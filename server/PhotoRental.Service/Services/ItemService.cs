@@ -51,9 +51,21 @@ public class ItemService : IItemService
         return await MapManyAsync(items.Where(i => i.DeletedAtUtc is null && i.SoldAtUtc is null && (i.OwnerId is null || !blocked.Contains(i.OwnerId))), gallery: false);
     }
 
-    public async Task<ItemDto?> GetByIdAsync(string id)
+    public async Task<PagedResultDto<ItemDto>> GetPageAsync(ItemPageQueryDto query, CancellationToken ct = default)
     {
-        var item = await _itemRepository.GetByIdAsync(id);
+        var (items, total) = await _itemRepository.GetPageAsync(query, ct);
+        return new PagedResultDto<ItemDto>
+        {
+            Items = await MapManyAsync(items, gallery: false),
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalCount = total
+        };
+    }
+
+    public async Task<ItemDto?> GetByIdAsync(string id, CancellationToken ct = default)
+    {
+        var item = await _itemRepository.GetByIdAsync(id, ct);
         if (item is null || item.DeletedAtUtc is not null)
             return null;
 

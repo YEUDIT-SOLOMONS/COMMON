@@ -34,7 +34,7 @@ public class SalesController : ControllerBase
     }
 
     [Authorize]
-    [HttpPost("quote")]
+    [HttpPost("quotes")]
     public async Task<IActionResult> Quote([FromBody] QuoteDto dto) =>
         Ok(new { Fee = await _sales.QuoteAsync(dto.ItemId, dto.DeliveryAddress) });
 
@@ -44,7 +44,7 @@ public class SalesController : ControllerBase
     {
         if (string.IsNullOrEmpty(UserId)) return Unauthorized();
         var sale = await _sales.CreateAsync(UserId, dto);
-        return Ok(new { sale.Id, Token = sale.BuyerToken });
+        return CreatedAtAction(nameof(Get), new { id = sale.Id }, new { sale.Id, Token = sale.BuyerToken });
     }
 
     [Authorize]
@@ -57,7 +57,7 @@ public class SalesController : ControllerBase
 
     [AllowAnonymous]
     [HttpGet("{id}")]
-    public async Task<IActionResult> Get(string id, [FromQuery] string? t)
+    public async Task<IActionResult> Get([FromRoute] string id, [FromQuery] string? t)
     {
         var found = await _sales.ResolveAsync(id, t, UserId);
         if (found is null) return NotFound(new { Message = "הרכישה לא נמצאה" });
@@ -65,8 +65,8 @@ public class SalesController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPost("{id}/received")]
-    public async Task<IActionResult> Received(string id, [FromQuery] string? t)
+    [HttpPost("{id}/receipt")]
+    public async Task<IActionResult> Received([FromRoute] string id, [FromQuery] string? t)
     {
         var found = await _sales.ResolveAsync(id, t, UserId);
         if (found is null || found.Value.Role != "Buyer") return NotFound(new { Message = "הרכישה לא נמצאה" });
@@ -75,8 +75,8 @@ public class SalesController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPost("{id}/handed")]
-    public async Task<IActionResult> Handed(string id, [FromQuery] string? t, [FromQuery] bool delivered = true)
+    [HttpPost("{id}/handover")]
+    public async Task<IActionResult> Handed([FromRoute] string id, [FromQuery] string? t, [FromQuery] bool delivered = true)
     {
         var found = await _sales.ResolveAsync(id, t, UserId);
         if (found is null || found.Value.Role != "Seller") return NotFound(new { Message = "המכירה לא נמצאה" });
@@ -85,8 +85,8 @@ public class SalesController : ControllerBase
     }
 
     [AllowAnonymous]
-    [HttpPost("{id}/problem")]
-    public async Task<IActionResult> Problem(string id, [FromQuery] string? t, [FromBody] ProblemDto dto)
+    [HttpPost("{id}/problems")]
+    public async Task<IActionResult> Problem([FromRoute] string id, [FromQuery] string? t, [FromBody] ProblemDto dto)
     {
         var found = await _sales.ResolveAsync(id, t, UserId);
         if (found is null || found.Value.Role != "Buyer") return NotFound(new { Message = "הרכישה לא נמצאה" });
@@ -117,16 +117,16 @@ public class SalesController : ControllerBase
     }
 
     [Authorize(Roles = "Admin")]
-    [HttpPost("admin/{id}/seller-paid")]
-    public async Task<IActionResult> SellerPaid(string id)
+    [HttpPost("admin/{id}/seller-payment")]
+    public async Task<IActionResult> SellerPaid([FromRoute] string id)
     {
         await _sales.MarkSellerPaidAsync(id);
         return NoContent();
     }
 
     [Authorize(Roles = "Admin")]
-    [HttpPost("admin/{id}/received")]
-    public async Task<IActionResult> AdminReceived(string id)
+    [HttpPost("admin/{id}/receipt")]
+    public async Task<IActionResult> AdminReceived([FromRoute] string id)
     {
         var found = (await _sales.GetAllAsync()).FirstOrDefault(s => s.Id == id);
         if (found is null) return NotFound();

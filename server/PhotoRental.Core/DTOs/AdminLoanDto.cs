@@ -13,7 +13,6 @@ public class AdminLoanDto
     public string? StartTime { get; set; }
     public DateTime ExpectedReturnDate { get; set; }
     public DateTime? ActualReturnDate { get; set; }
-    public string? ReturnedBy { get; set; }
     public string Status { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = string.Empty;
     public string PaymentStatus { get; set; } = string.Empty;

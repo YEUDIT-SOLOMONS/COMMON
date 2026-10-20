@@ -1,4 +1,4 @@
-﻿namespace PhotoRental.Data;
+namespace PhotoRental.Data;
 
 using System.Net;
 using System.Net.Http.Headers;
@@ -18,10 +18,24 @@ public class FirebaseDbContext
     private static readonly string[] FirestoreScopes = { "https://www.googleapis.com/auth/datastore" };
 
     private readonly HttpClient _http;
-    private readonly GoogleCredential _credential;
+    private readonly GoogleCredential? _credential;
     private readonly string _documentsBasePath;
 
     public string ProjectId { get; }
+
+    public bool IsEmulator => _credential is null;
+
+    // חיבור ל-Firestore Emulator מקומי (לפיתוח ולבדיקות) - בלי קובץ מפתח ובלי גישה לענן
+    public FirebaseDbContext(string projectId, Uri emulatorBaseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(projectId))
+            throw new ArgumentException("יש להגדיר את Firebase:ProjectId", nameof(projectId));
+
+        ProjectId = projectId;
+        _credential = null;
+        _documentsBasePath = $"projects/{projectId}/databases/(default)/documents";
+        _http = new HttpClient { BaseAddress = new Uri(emulatorBaseUrl, "v1/") };
+    }
 
     public FirebaseDbContext(string projectId, string jsonCredentialsPath)
     {
@@ -85,7 +99,7 @@ public class FirebaseDbContext
     // ===================== פעולות בסיסיות על מסמכים =====================
 
     // הגדלה אטומית של שדות מספריים (יוצר את המסמך אם אינו קיים) - נכון גם כשכמה בקשות מגיעות בבת אחת
-    public async Task IncrementAsync(string collectionId, string documentId, IReadOnlyDictionary<string, long> increments)
+    public async Task IncrementAsync(string collectionId, string documentId, IReadOnlyDictionary<string, long> increments, CancellationToken ct = default)
     {
         var transforms = new JsonArray();
         foreach (var (field, by) in increments)
@@ -105,27 +119,27 @@ public class FirebaseDbContext
                 }
             }
         };
-        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:commit", body);
-        await EnsureSuccessAsync(response);
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:commit", body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     // שליפת מסמך בודד לפי מזהה. מחזיר null אם המסמך לא קיים (ולא זורק חריגה) -
     // כדי לאפשר לשכבות שמעל להבחין בקלות בין "לא נמצא" לבין שגיאה אמיתית.
-    public async Task<JsonObject?> GetDocumentAsync(string collectionId, string documentId)
+    public async Task<JsonObject?> GetDocumentAsync(string collectionId, string documentId, CancellationToken ct = default)
     {
-        var response = await SendAsync(HttpMethod.Get, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}");
+        var response = await SendAsync(HttpMethod.Get, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}", ct: ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
-        await EnsureSuccessAsync(response);
+        await EnsureSuccessAsync(response, ct);
         return await ReadJsonObjectAsync(response);
     }
 
     // שליפת כל המסמכים באוסף, עם דפדוף (Pagination) אוטומטי ומלא כדי לא להחזיר רק עמוד חלקי
-    public async Task<IReadOnlyList<JsonObject>> ListDocumentsAsync(string collectionId)
+    public async Task<IReadOnlyList<JsonObject>> ListDocumentsAsync(string collectionId, CancellationToken ct = default)
     {
         var results = new List<JsonObject>();
         string? pageToken = null;
@@ -138,8 +152,8 @@ public class FirebaseDbContext
                 url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
             }
 
-            var response = await SendAsync(HttpMethod.Get, url);
-            await EnsureSuccessAsync(response);
+            var response = await SendAsync(HttpMethod.Get, url, ct: ct);
+            await EnsureSuccessAsync(response, ct);
             var body = await ReadJsonObjectAsync(response);
 
             if (body?["documents"] is JsonArray documents)
@@ -167,12 +181,12 @@ public class FirebaseDbContext
             PhotoRental.Core.Helpers.CatalogCache.Invalidate();
     }
 
-    public async Task<JsonObject> CreateDocumentAsync(string collectionId, JsonObject fields)
+    public async Task<JsonObject> CreateDocumentAsync(string collectionId, JsonObject fields, CancellationToken ct = default)
     {
         InvalidateCatalogFor(collectionId);
         var body = new JsonObject { ["fields"] = fields };
-        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}/{collectionId}", body);
-        await EnsureSuccessAsync(response);
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}/{collectionId}", body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
         var created = await ReadJsonObjectAsync(response);
 
         return created ?? throw new InvalidOperationException(
@@ -180,44 +194,45 @@ public class FirebaseDbContext
     }
 
     // החלפת כל השדות של מסמך קיים (ללא updateMask - Firestore מחליף את כל תוכן המסמך בשדות שנשלחו)
-    public async Task ReplaceDocumentAsync(string collectionId, string documentId, JsonObject fields)
+    public async Task ReplaceDocumentAsync(string collectionId, string documentId, JsonObject fields, CancellationToken ct = default)
     {
         InvalidateCatalogFor(collectionId);
         var body = new JsonObject { ["fields"] = fields };
-        var response = await SendAsync(HttpMethod.Patch, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}", body);
-        await EnsureSuccessAsync(response);
+        var response = await SendAsync(HttpMethod.Patch, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}", body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
     // עדכון חלקי של שדות ספציפיים בלבד במסמך קיים (updateMask), מבלי לגעת בשאר השדות שבמסמך
-    public async Task PatchDocumentFieldsAsync(string collectionId, string documentId, JsonObject fields, IEnumerable<string> fieldPaths)
+    public async Task PatchDocumentFieldsAsync(string collectionId, string documentId, JsonObject fields, IEnumerable<string> fieldPaths, CancellationToken ct = default)
     {
         InvalidateCatalogFor(collectionId);
         var body = new JsonObject { ["fields"] = fields };
         var maskQuery = string.Join("&", fieldPaths.Select(path => $"updateMask.fieldPaths={Uri.EscapeDataString(path)}"));
         var url = $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}?{maskQuery}";
 
-        var response = await SendAsync(HttpMethod.Patch, url, body);
-        await EnsureSuccessAsync(response);
+        var response = await SendAsync(HttpMethod.Patch, url, body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
     }
 
-    public async Task DeleteDocumentAsync(string collectionId, string documentId)
+    public async Task DeleteDocumentAsync(string collectionId, string documentId, CancellationToken ct = default)
     {
         InvalidateCatalogFor(collectionId);
-        var response = await SendAsync(HttpMethod.Delete, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}");
+        var response = await SendAsync(HttpMethod.Delete, $"{_documentsBasePath}/{collectionId}/{Uri.EscapeDataString(documentId)}", ct: ct);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return;
         }
 
-        await EnsureSuccessAsync(response);
+        await EnsureSuccessAsync(response, ct);
     }
 
     // הרצת שאילתה מובנית (Structured Query) מול אוסף, עם עד כמה תנאי שוויון (AND ביניהם) ומגבלת תוצאות אופציונלית
     public async Task<IReadOnlyList<JsonObject>> RunQueryAsync(
         string collectionId,
         IReadOnlyList<(string FieldPath, JsonNode Value)> equalityFilters,
-        int? limit = null)
+        int? limit = null,
+        CancellationToken ct = default)
     {
         JsonNode? where = null;
 
@@ -259,8 +274,8 @@ public class FirebaseDbContext
         }
 
         var body = new JsonObject { ["structuredQuery"] = structuredQuery };
-        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:runQuery", body);
-        await EnsureSuccessAsync(response);
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:runQuery", body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
 
         var resultsArray = await ReadJsonArrayAsync(response);
         var documents = new List<JsonObject>();
@@ -279,6 +294,95 @@ public class FirebaseDbContext
         return documents;
     }
 
+    // שליפת כמה מסמכים לפי מזהה בבקשה אחת (המקבילה של Include) - במקום בקשה לכל מסמך בלולאה (N+1)
+    public async Task<IReadOnlyList<JsonObject>> BatchGetAsync(string collectionId, IEnumerable<string> documentIds, CancellationToken ct = default)
+    {
+        var names = documentIds.Where(id => !string.IsNullOrEmpty(id)).Distinct()
+            .Select(id => (JsonNode)DocumentName(collectionId, id)).ToArray();
+        if (names.Length == 0)
+            return Array.Empty<JsonObject>();
+
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:batchGet", new JsonObject { ["documents"] = new JsonArray(names) }, ct: ct);
+        await EnsureSuccessAsync(response, ct);
+
+        var results = await ReadJsonArrayAsync(response);
+        return results?.OfType<JsonObject>().Select(r => r["found"]).OfType<JsonObject>().ToList() ?? new List<JsonObject>();
+    }
+
+    // ===================== שאילתות עם מיון ודפדוף בצד השרת =====================
+
+    public static JsonObject EqualsFilter(string fieldPath, JsonNode value) => BuildFieldEqualsFilter(fieldPath, value);
+
+    public static JsonObject IsNullFilter(string fieldPath) => new()
+    {
+        ["unaryFilter"] = new JsonObject { ["field"] = new JsonObject { ["fieldPath"] = fieldPath }, ["op"] = "IS_NULL" }
+    };
+
+    private static JsonObject? CombineFilters(IReadOnlyList<JsonObject> filters) => filters.Count switch
+    {
+        0 => null,
+        1 => (JsonObject)filters[0].DeepClone(),
+        _ => new JsonObject
+        {
+            ["compositeFilter"] = new JsonObject { ["op"] = "AND", ["filters"] = new JsonArray(filters.Select(f => f.DeepClone()).ToArray()) }
+        }
+    };
+
+    // דפדוף אמיתי: offset ו-limit נשלחים בתוך השאילתה (המקבילה של Skip ו-Take), לא חיתוך בזיכרון
+    public async Task<IReadOnlyList<JsonObject>> QueryPageAsync(
+        string collectionId,
+        IReadOnlyList<JsonObject> filters,
+        IReadOnlyList<(string FieldPath, bool Descending)> orderBy,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var query = new JsonObject
+        {
+            ["from"] = new JsonArray { new JsonObject { ["collectionId"] = collectionId } },
+            ["orderBy"] = new JsonArray(orderBy.Select(o => (JsonNode)new JsonObject
+            {
+                ["field"] = new JsonObject { ["fieldPath"] = o.FieldPath },
+                ["direction"] = o.Descending ? "DESCENDING" : "ASCENDING"
+            }).ToArray()),
+            ["offset"] = offset,
+            ["limit"] = limit
+        };
+        if (CombineFilters(filters) is { } where)
+            query["where"] = where;
+
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:runQuery", new JsonObject { ["structuredQuery"] = query }, ct: ct);
+        await EnsureSuccessAsync(response, ct);
+
+        var results = await ReadJsonArrayAsync(response);
+        return results?.OfType<JsonObject>().Select(r => r["document"]).OfType<JsonObject>().ToList() ?? new List<JsonObject>();
+    }
+
+    // ספירה בצד השרת (aggregation query) - בלי להוריד את המסמכים עצמם
+    public async Task<int> CountAsync(string collectionId, IReadOnlyList<JsonObject> filters, CancellationToken ct = default)
+    {
+        var query = new JsonObject { ["from"] = new JsonArray { new JsonObject { ["collectionId"] = collectionId } } };
+        if (CombineFilters(filters) is { } where)
+            query["where"] = where;
+
+        var body = new JsonObject
+        {
+            ["structuredAggregationQuery"] = new JsonObject
+            {
+                ["structuredQuery"] = query,
+                ["aggregations"] = new JsonArray { new JsonObject { ["alias"] = "total", ["count"] = new JsonObject() } }
+            }
+        };
+
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:runAggregationQuery", body, ct: ct);
+        await EnsureSuccessAsync(response, ct);
+
+        var raw = (await ReadJsonArrayAsync(response))?.OfType<JsonObject>()
+            .Select(r => r["result"]?["aggregateFields"]?["total"]?["integerValue"]?.GetValue<string>())
+            .FirstOrDefault(v => v is not null);
+        return int.TryParse(raw, out var count) ? count : 0;
+    }
+
     private static JsonObject BuildFieldEqualsFilter(string fieldPath, JsonNode value)
     {
         return new JsonObject
@@ -292,9 +396,49 @@ public class FirebaseDbContext
         };
     }
 
+    // ===================== שמירה אטומית עם concurrency token =====================
+
+    public string DocumentName(string collectionId, string documentId) => $"{_documentsBasePath}/{collectionId}/{documentId}";
+
+    public static string NewDocumentId() => Guid.NewGuid().ToString("N")[..20];
+
+    // כתיבה למסמך חדש - נכשלת אם כבר קיים מסמך עם אותו מזהה
+    public JsonObject CreateWrite(string collectionId, string documentId, JsonObject fields) => new()
+    {
+        ["update"] = new JsonObject { ["name"] = DocumentName(collectionId, documentId), ["fields"] = fields },
+        ["currentDocument"] = new JsonObject { ["exists"] = false }
+    };
+
+    // עדכון שדות שמתבצע רק אם המסמך לא השתנה מאז שנקרא (updateTime זהה) - כמו תנאי ה-WHERE של EF Core
+    public JsonObject GuardedPatchWrite(string collectionId, string documentId, JsonObject fields, string expectedUpdateTime) => new()
+    {
+        ["update"] = new JsonObject { ["name"] = DocumentName(collectionId, documentId), ["fields"] = fields },
+        ["updateMask"] = new JsonObject { ["fieldPaths"] = new JsonArray(fields.Select(f => (JsonNode)f.Key).ToArray()) },
+        ["currentDocument"] = new JsonObject { ["updateTime"] = expectedUpdateTime }
+    };
+
+    // כל הכתיבות נשמרות יחד או שאף אחת לא נשמרת. אם תנאי מוקדם נכשל - ConcurrencyConflictException
+    public async Task CommitAsync(IEnumerable<JsonObject> writes, string? resourceId = null, CancellationToken ct = default)
+    {
+        InvalidateCatalogFor("Items");
+        var body = new JsonObject { ["writes"] = new JsonArray(writes.Cast<JsonNode>().ToArray()) };
+        var response = await SendAsync(HttpMethod.Post, $"{_documentsBasePath}:commit", body, ct: ct);
+
+        if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
+        {
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (text.Contains("FAILED_PRECONDITION") || text.Contains("ABORTED") || text.Contains("ALREADY_EXISTS"))
+                throw new PhotoRental.Core.Exceptions.ConcurrencyConflictException(
+                    "המשאב השתנה על ידי משתמש אחר בין הקריאה לשמירה", resourceId);
+            throw new PhotoRental.Core.Exceptions.DataAccessException($"שמירה ל-Firestore נכשלה: {TryExtractGoogleErrorMessage(text) ?? text}");
+        }
+
+        await EnsureSuccessAsync(response, ct);
+    }
+
     // ===================== תשתית פנימית לשליחת בקשות HTTP =====================
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string relativeUrl, JsonNode? jsonBody = null)
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string relativeUrl, JsonNode? jsonBody = null, CancellationToken ct = default)
     {
         var request = new HttpRequestMessage(method, relativeUrl)
         {
@@ -304,7 +448,8 @@ public class FirebaseDbContext
             VersionPolicy = HttpVersionPolicy.RequestVersionExact
         };
 
-        string accessToken;
+        string accessToken = "owner";
+        if (_credential is not null)
         try
         {
             // GoogleCredential מממש את ITokenAccess באופן מפורש (Explicit Interface Implementation),
@@ -314,7 +459,7 @@ public class FirebaseDbContext
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException(
+            throw new PhotoRental.Core.Exceptions.DataAccessException(
                 "האימות מול Google נכשל בעת ניסיון לקבל טוקן גישה. ייתכן שקובץ המפתח (firebase-key.json) פג תוקף, " +
                 $"נפגם, בוטל, או שאין חיבור רשת לשרתי האימות של Google. פרטי השגיאה: {ex.Message}",
                 ex);
@@ -329,25 +474,25 @@ public class FirebaseDbContext
 
         try
         {
-            return await _http.SendAsync(request);
+            return await _http.SendAsync(request, ct);
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException(
+            throw new PhotoRental.Core.Exceptions.DataAccessException(
                 "החיבור לשרתי Firestore (firestore.googleapis.com) נכשל. יש לבדוק חיבור אינטרנט, " +
                 $"ושחומת אש/אנטי-וירוס אינם חוסמים את הגישה. פרטי השגיאה המקוריים: {ex.Message}",
                 ex);
         }
     }
 
-    private async Task EnsureSuccessAsync(HttpResponseMessage response)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct = default)
     {
         if (response.IsSuccessStatusCode)
         {
             return;
         }
 
-        var bodyText = await response.Content.ReadAsStringAsync();
+        var bodyText = await response.Content.ReadAsStringAsync(ct);
         var googleMessage = TryExtractGoogleErrorMessage(bodyText) ?? bodyText;
 
         var explanation = response.StatusCode switch
@@ -371,7 +516,7 @@ public class FirebaseDbContext
             (explanation is not null ? $" {explanation}" : string.Empty) +
             $" פרטי השגיאה מגוגל: {googleMessage}";
 
-        throw new InvalidOperationException(message);
+        throw new PhotoRental.Core.Exceptions.DataAccessException(message);
     }
 
     private static string? TryExtractGoogleErrorMessage(string bodyText)

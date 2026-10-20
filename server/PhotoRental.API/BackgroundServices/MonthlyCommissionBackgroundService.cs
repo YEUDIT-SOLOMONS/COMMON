@@ -51,7 +51,7 @@ public class MonthlyCommissionBackgroundService : BackgroundService
         }
     }
 
-    // נקרא מהלולאה הפנימית, וגם מ-POST /api/internal/run-scheduled (ראו SchedulerController)
+    // נקרא מהלולאה הפנימית, וגם מ-POST /api/internal/scheduled-runs (ראו SchedulerController)
     public async Task SendPreviousMonthAsync()
     {
         if (DateTime.UtcNow - _lastRunUtc < TimeSpan.FromHours(1))

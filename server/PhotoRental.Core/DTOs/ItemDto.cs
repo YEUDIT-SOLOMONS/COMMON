@@ -1,5 +1,7 @@
 namespace PhotoRental.Core.DTOs;
 
+using System.ComponentModel.DataAnnotations;
+
 // מוצג ללקוח כאשר שולפים פריט ציוד צילום.
 // שימו לב: אינו כולל את הכתובת המדויקת של הפריט (אין כאן שדה Address) - הכתובת נחשפת רק
 // דרך GET /api/items/{id}/address, ורק לאחר שהשוכר בוחר באיסוף עצמי בתהליך ההשכרה (ראו ItemsController).
@@ -57,8 +59,12 @@ public class ItemDto
 // נשלח מהלקוח ביצירת פריט ציוד חדש
 public class ItemCreateDto
 {
+    [Required(ErrorMessage = "יש להזין שם לפריט")]
+    [StringLength(120)]
     public string Name { get; set; } = string.Empty;
+    [StringLength(4000)]
     public string Description { get; set; } = string.Empty;
+    [Range(typeof(decimal), "0", "100000")]
     public decimal DailyPrice { get; set; }
 
     // הגדרות תמחור/השכרה מתקדמות - כולן אופציונליות, בשליטת המשכיר בלבד
@@ -66,6 +72,7 @@ public class ItemCreateDto
 
     // ItemDto: המחירים כוללים מע"מ. יצירה/עדכון: להוסיף מע"מ למחירים שנשלחו (לפני מע"מ)
     public bool AddVat { get; set; }
+    [Range(1, 1000)]
     public int Quantity { get; set; } = 1;
     public bool ForSale { get; set; }
     public decimal SalePrice { get; set; }
@@ -73,7 +80,10 @@ public class ItemCreateDto
     // "New" / "LikeNew" / "Used" / "Damaged"
     public string? SaleCondition { get; set; }
     public string MinRentalUnit { get; set; } = "Days";
+    [Range(1, 365)]
     public int MinRentalAmount { get; set; } = 1;
+
+    [StringLength(100)]
 
     public string SerialNumber { get; set; } = string.Empty;
     public string? CategoryId { get; set; }
@@ -91,13 +101,18 @@ public class ItemCreateDto
 // ולסטטוס (שאינם ניתנים לשינוי כאן). OwnerId נשלח רק לצורך אימות שהעורך הוא בעל הפריט.
 public class ItemUpdateDto
 {
+    [Required(ErrorMessage = "יש להזין שם לפריט")]
+    [StringLength(120)]
     public string Name { get; set; } = string.Empty;
+    [StringLength(4000)]
     public string Description { get; set; } = string.Empty;
+    [Range(typeof(decimal), "0", "100000")]
     public decimal DailyPrice { get; set; }
     public decimal? HourlyPrice { get; set; }
 
     // ItemDto: המחירים כוללים מע"מ. יצירה/עדכון: להוסיף מע"מ למחירים שנשלחו (לפני מע"מ)
     public bool AddVat { get; set; }
+    [Range(1, 1000)]
     public int Quantity { get; set; } = 1;
     public bool ForSale { get; set; }
     public decimal SalePrice { get; set; }
@@ -105,6 +120,7 @@ public class ItemUpdateDto
     // "New" / "LikeNew" / "Used" / "Damaged"
     public string? SaleCondition { get; set; }
     public string MinRentalUnit { get; set; } = "Days";
+    [Range(1, 365)]
     public int MinRentalAmount { get; set; } = 1;
     public string? CategoryId { get; set; }
     public string? ExtraCategoryId { get; set; }

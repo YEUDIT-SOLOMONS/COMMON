@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.DTOs;
@@ -71,7 +71,7 @@ public class CommissionsController : ControllerBase
         return proof is null ? NotFound(new { Message = "לא הועלתה אסמכתא" }) : Ok(proof);
     }
 
-    [HttpPost("admin/send")]
+    [HttpPost("admin/notifications")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SendReport([FromBody] CommissionSendDto dto)
     {

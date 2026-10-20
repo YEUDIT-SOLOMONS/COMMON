@@ -58,7 +58,7 @@ public class AvailabilityCallsController : ControllerBase
 
     // בדיקת מצב השיחה הנוכחי - הלקוח מבצע בקשה זו שוב ושוב (Polling) עד לקבלת תוצאה סופית
     [HttpGet("{callId}")]
-    public async Task<IActionResult> GetStatus(string callId)
+    public async Task<IActionResult> GetStatus([FromRoute] string callId)
     {
         var status = await _callService.GetStatusAsync(callId);
         return Ok(status);
@@ -92,8 +92,8 @@ public class AvailabilityCallsController : ControllerBase
         return Ok(await _callService.GetWaitingForRenterAsync(userId));
     }
 
-    [HttpPost("requests/{requestId}/cancel")]
-    public async Task<IActionResult> CancelRequest(string requestId)
+    [HttpPost("requests/{requestId}/cancellation")]
+    public async Task<IActionResult> CancelRequest([FromRoute] string requestId)
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -103,7 +103,7 @@ public class AvailabilityCallsController : ControllerBase
 
     // מצב בקשה לשוכרת - קישור "להמשך ההזמנה" מהמייל
     [HttpGet("requests/{requestId}")]
-    public async Task<IActionResult> GetRequest(string requestId)
+    public async Task<IActionResult> GetRequest([FromRoute] string requestId)
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -111,8 +111,8 @@ public class AvailabilityCallsController : ControllerBase
         return status is null ? NotFound(new { Message = "הבקשה לא נמצאה" }) : Ok(status);
     }
 
-    [HttpPost("{callId}/retry-later")]
-    public async Task<IActionResult> RetryLater(string callId, [FromQuery] string? notify)
+    [HttpPost("{callId}/retries")]
+    public async Task<IActionResult> RetryLater([FromRoute] string callId, [FromQuery] string? notify)
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                      ?? User.FindFirst("sub")?.Value;
@@ -122,7 +122,7 @@ public class AvailabilityCallsController : ControllerBase
     }
 
     [HttpDelete("retries/{retryId}")]
-    public async Task<IActionResult> CancelRetry(string retryId)
+    public async Task<IActionResult> CancelRetry([FromRoute] string retryId)
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                      ?? User.FindFirst("sub")?.Value;
@@ -131,8 +131,8 @@ public class AvailabilityCallsController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{callId}/respond")]
-    public async Task<IActionResult> Respond(string callId, [FromBody] AvailabilityCallRespondDto request)
+    [HttpPost("{callId}/responses")]
+    public async Task<IActionResult> Respond([FromRoute] string callId, [FromBody] AvailabilityCallRespondDto request)
     {
         var status = await _callService.RespondAsync(callId, request.Digit);
         return Ok(status);

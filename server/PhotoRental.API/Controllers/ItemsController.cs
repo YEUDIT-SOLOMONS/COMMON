@@ -27,7 +27,7 @@ public class ItemsController : ControllerBase
     // שליפת כל הציוד, עם אפשרות סינון לפי קטגוריה (?categoryId=...) או לפי בעלים (?ownerId=...) - לשימוש "האזור האישי"
     // לוח הזמנים של הפריט: לכולן - טווחים תפוסים; למשכירה - גם ההשכרות והימים שחסמה
     [HttpGet("{id}/schedule")]
-    public async Task<IActionResult> Schedule(string id)
+    public async Task<IActionResult> Schedule([FromRoute] string id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         return Ok(await _schedule.GetScheduleAsync(id, userId));
@@ -35,7 +35,7 @@ public class ItemsController : ControllerBase
 
     [Authorize]
     [HttpPost("{id}/blocks")]
-    public async Task<IActionResult> AddBlock(string id, [FromBody] ItemBlockCreateDto dto)
+    public async Task<IActionResult> AddBlock([FromRoute] string id, [FromBody] ItemBlockCreateDto dto)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -44,7 +44,7 @@ public class ItemsController : ControllerBase
 
     [Authorize]
     [HttpDelete("{id}/blocks/{blockId}")]
-    public async Task<IActionResult> DeleteBlock(string id, string blockId)
+    public async Task<IActionResult> DeleteBlock([FromRoute] string id, [FromRoute] string blockId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
@@ -62,8 +62,15 @@ public class ItemsController : ControllerBase
         return Ok(await CatalogCache.GetOrAddAsync(key, TimeSpan.FromSeconds(60), () => _itemService.GetBusyItemIdsAsync(from, to)));
     }
 
+    // GET /api/items/page?page=2&pageSize=12&categoryId=...&sort=price - דפדוף בצד בסיס הנתונים
+    [HttpGet("page")]
+    public async Task<ActionResult<PagedResultDto<ItemDto>>> GetPage([FromQuery] ItemPageQueryDto query, CancellationToken ct)
+    {
+        return Ok(await _itemService.GetPageAsync(query, ct));
+    }
+
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? categoryId, [FromQuery] string? ownerId, [FromQuery] int? take, [FromQuery] bool forSale = false)
+    public async Task<IActionResult> GetAll([FromQuery] string? categoryId, [FromQuery] string? ownerId)
     {
         var ttl = TimeSpan.FromSeconds(60);
         if (!string.IsNullOrWhiteSpace(ownerId))
@@ -75,18 +82,14 @@ public class ItemsController : ControllerBase
             ? await CatalogCache.GetOrAddAsync("items:all", ttl, () => _itemService.GetAllAsync())
             : await CatalogCache.GetOrAddAsync($"items:cat:{categoryId}", ttl, () => _itemService.GetByCategoryAsync(categoryId));
 
-        // מנה ראשונה קטנה ואקראית להצגה מיידית, בזמן שהקטלוג המלא נטען
-        if (take is > 0)
-            return Ok(items.Where(i => i.ForSale == forSale && !i.Sold).OrderBy(_ => Random.Shared.Next()).Take(Math.Min(take.Value, 48)));
-
         return Ok(items);
     }
 
     // שליפת פריט לפי ID
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(string id)
+    public async Task<IActionResult> GetById([FromRoute] string id, CancellationToken ct)
     {
-        var item = await _itemService.GetByIdAsync(id);
+        var item = await _itemService.GetByIdAsync(id, ct);
         return item is null ? NotFound(new { Message = "הפריט לא נמצא" }) : Ok(item);
     }
 
@@ -94,7 +97,7 @@ public class ItemsController : ControllerBase
     // שהשוכר בוחר באיסוף עצמי בתהליך ההשכרה (ראו ItemAddressDto)
     [Authorize]
     [HttpGet("{id}/address")]
-    public async Task<IActionResult> GetAddress(string id)
+    public async Task<IActionResult> GetAddress([FromRoute] string id)
     {
         var address = await _itemService.GetAddressAsync(id);
         return Ok(address);
@@ -103,7 +106,7 @@ public class ItemsController : ControllerBase
     // פרטי חשבון הבנק של בעל הפריט - לשימוש הלקוח כאשר השוכר בוחר לשלם בהעברה בנקאית
     [Authorize]
     [HttpGet("{id}/owner-payout")]
-    public async Task<IActionResult> GetOwnerPayout(string id)
+    public async Task<IActionResult> GetOwnerPayout([FromRoute] string id)
     {
         var payout = await _itemService.GetOwnerPayoutAsync(id);
         return Ok(payout);
@@ -124,7 +127,7 @@ public class ItemsController : ControllerBase
     // עריכת פריט קיים (רק בעליו)
     [HttpPut("{id}")]
     [Authorize]
-    public async Task<IActionResult> Update(string id, [FromBody] ItemUpdateDto dto)
+    public async Task<IActionResult> Update([FromRoute] string id, [FromBody] ItemUpdateDto dto)
     {
         // השרת משווה את dto.OwnerId לבעלת הפריט - כאן מחליפים אותו בזהות המחוברת כדי שלא ניתן לזייף
         if (!IsAdmin) dto.OwnerId = CurrentUserId;
@@ -136,7 +139,7 @@ public class ItemsController : ControllerBase
     // מחיקת ציוד
     [HttpDelete("{id}")]
     [Authorize]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete([FromRoute] string id)
     {
         var item = await _itemService.GetByIdAsync(id);
         if (item is null) return NotFound(new { Message = "הפריט לא נמצא" });

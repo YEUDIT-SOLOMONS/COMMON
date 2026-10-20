@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Helpers;
@@ -27,7 +27,7 @@ public class CategoriesController : ControllerBase
 
     // שליפת קטגוריה לפי ID
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(string id)
+    public async Task<IActionResult> GetById([FromRoute] string id)
     {
         var category = await _categoryService.GetByIdAsync(id);
         return category is null ? NotFound(new { Message = "הקטגוריה לא נמצאה" }) : Ok(category);
@@ -53,7 +53,7 @@ public class CategoriesController : ControllerBase
 
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Update(string id, [FromBody] CategoryCreateDto dto)
+    public async Task<IActionResult> Update([FromRoute] string id, [FromBody] CategoryCreateDto dto)
     {
         var updated = await _categoryService.UpdateAsync(id, dto);
         return Ok(updated);
@@ -61,7 +61,7 @@ public class CategoriesController : ControllerBase
 
     [HttpDelete("{id}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete([FromRoute] string id)
     {
         await _categoryService.DeleteAsync(id);
         return NoContent();

@@ -18,14 +18,14 @@ public class AvailabilityAnswersController : ControllerBase
     }
 
     [HttpGet("{requestId}")]
-    public async Task<IActionResult> Get(string requestId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> Get([FromRoute] string requestId, [FromQuery(Name = "t")] string? token)
     {
         var view = await _calls.GetAnswerViewAsync(requestId, token);
         return view is null ? NotFound(new { Message = "הקישור אינו תקף" }) : Ok(view);
     }
 
     [HttpPost("{requestId}")]
-    public async Task<IActionResult> Answer(string requestId, [FromQuery(Name = "t")] string? token, [FromQuery(Name = "a")] int answer)
+    public async Task<IActionResult> Answer([FromRoute] string requestId, [FromQuery(Name = "t")] string? token, [FromQuery(Name = "a")] int answer)
     {
         if (answer is not (1 or 2)) return BadRequest(new { Message = "תשובה לא תקינה" });
         var view = await _calls.AnswerByEmailAsync(requestId, token, answer == 1);

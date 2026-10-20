@@ -51,13 +51,6 @@ function canCancel(loan) {
   return loan.status === 'Active' && Boolean(loan.cancelDeadline) && wallMs(loan.cancelDeadline) >= wallMs(israelNowWall())
 }
 
-function canMarkReturned(loan) {
-  if (loan.status !== 'Active') return false
-  if (loan.pickedUpAt || !loan.startDate) return true
-  const start = `${String(loan.startDate).slice(0, 10)}T${loan.startTime || '00:00'}:00`
-  return wallMs(start) <= wallMs(israelNowWall())
-}
-
 function ownerPaymentText(loan) {
   if (loan.paymentMethod === 'BankTransfer' && loan.paymentStatus === 'Pending') return 'שולם, ממתין לאישורך'
   if (loan.paymentMethod === 'CreditCard' && loan.ownerPayoutNet != null) {
@@ -136,7 +129,6 @@ export function Profile() {
   const [debt, setDebt] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [cancelTarget, setCancelTarget] = useState(null)
-  const [returnTarget, setReturnTarget] = useState(null)
   const [cancelling, setCancelling] = useState(false)
   const [cancelNotice, setCancelNotice] = useState('')
   const [savedToast, setSavedToast] = useState(0)
@@ -246,8 +238,6 @@ export function Profile() {
       await load()
     } catch (err) {
       setError(err.message)
-    } finally {
-      setReturnTarget(null)
     }
   }
 
@@ -753,11 +743,11 @@ export function Profile() {
                                     הפריט נאסף
                                   </button>
                                 )}
-                                {canMarkReturned(loan) && (
+                                {loan.status === 'Active' && (
                                   <button
                                     type="button"
                                     className="btn btn-ghost btn-small"
-                                    onClick={() => setReturnTarget(loan)}
+                                    onClick={() => handleReturn(loan.id)}
                                   >
                                     סימון כהוחזר
                                   </button>
@@ -831,17 +821,6 @@ export function Profile() {
         <p key={savedToast} className="form-success thanks-toast saved-toast" role="status">
           ✓ השינויים נשמרו ופורסמו
         </p>
-      )}
-
-      {returnTarget && (
-        <ConfirmDialog
-          title="סימון כהוחזר"
-          message={`לסמן ש"${returnTarget.itemName}" הוחזר אלייך? אחרי הסימון ההשכרה נסגרת.`}
-          confirmLabel="כן, הוחזר"
-          cancelLabel="עוד לא"
-          onConfirm={() => handleReturn(returnTarget.id)}
-          onCancel={() => setReturnTarget(null)}
-        />
       )}
 
       {cancelTarget && (

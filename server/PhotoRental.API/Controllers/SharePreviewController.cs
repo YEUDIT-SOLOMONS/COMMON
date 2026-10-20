@@ -23,7 +23,7 @@ public class SharePreviewController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> Preview(string id)
+    public async Task<IActionResult> Preview([FromRoute] string id)
     {
         var baseUrl = _client.BaseUrl.TrimEnd('/');
         var item = await _items.GetByIdAsync(id);
@@ -57,7 +57,7 @@ public class SharePreviewController : ControllerBase
     }
 
     [HttpGet("{id}/image")]
-    public async Task<IActionResult> Image(string id)
+    public async Task<IActionResult> Image([FromRoute] string id)
     {
         var item = await _items.GetByIdAsync(id);
         var dataUrl = item?.ImageDataUrl;

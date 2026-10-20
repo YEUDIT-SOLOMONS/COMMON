@@ -6,7 +6,7 @@ using PhotoRental.Core.Enums;
 public interface IUserRepository
 {
     Task<IReadOnlyList<User>> GetAllAsync();
-    Task<User?> GetByIdAsync(string id);
+    Task<User?> GetByIdAsync(string id, CancellationToken ct = default);
     Task<User?> GetByEmailAsync(string email);
     Task<User?> GetByPasswordResetTokenAsync(string token);
     Task<User> CreateAsync(User user);

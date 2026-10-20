@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.Interfaces;
 
@@ -22,7 +22,7 @@ public class LoanActionsController : ControllerBase
 
     // אישור (a=1) או דחייה (a=2) של בקשת הארכה - מהמייל שנשלח כשהמשכירה לא ענתה לשיחה
     [HttpPost("{loanId}/extension")]
-    public async Task<IActionResult> AnswerExtension(string loanId, [FromQuery(Name = "t")] string? token, [FromQuery(Name = "a")] int answer)
+    public async Task<IActionResult> AnswerExtension([FromRoute] string loanId, [FromQuery(Name = "t")] string? token, [FromQuery(Name = "a")] int answer)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         if (answer is not (1 or 2)) return BadRequest(new { Message = "תשובה לא תקינה" });
@@ -34,38 +34,38 @@ public class LoanActionsController : ControllerBase
         await _loanService.ValidateOwnerTokenAsync(loanId, token);
 
     [HttpGet("{loanId}")]
-    public async Task<IActionResult> Get(string loanId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> Get([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         var view = await _loanService.GetActionViewAsync(loanId);
         return view is null ? NotFound(new { Message = "ההשכרה לא נמצאה" }) : Ok(view);
     }
 
-    [HttpPost("{loanId}/picked-up")]
-    public async Task<IActionResult> MarkPickedUp(string loanId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{loanId}/pickup")]
+    public async Task<IActionResult> MarkPickedUp([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         await _loanService.MarkPickedUpAsync(loanId, "Owner");
         return NoContent();
     }
 
-    [HttpPost("{loanId}/returned")]
-    public async Task<IActionResult> MarkReturned(string loanId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{loanId}/return-confirmation")]
+    public async Task<IActionResult> MarkReturned([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         await _loanService.MarkReturnedFromLinkAsync(loanId);
         return NoContent();
     }
 
-    [HttpPost("{loanId}/not-returned")]
-    public async Task<IActionResult> MarkNotReturned(string loanId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{loanId}/non-return-reports")]
+    public async Task<IActionResult> MarkNotReturned([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         return Ok(await _loanService.ReportNotReturnedAsync(loanId));
     }
 
-    [HttpPost("{loanId}/payment-received")]
-    public async Task<IActionResult> MarkPaymentReceived(string loanId, [FromQuery(Name = "t")] string? token)
+    [HttpPost("{loanId}/payment-confirmation")]
+    public async Task<IActionResult> MarkPaymentReceived([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         await _loanService.ConfirmPaymentAsync(loanId);
@@ -73,7 +73,7 @@ public class LoanActionsController : ControllerBase
     }
 
     [HttpGet("{loanId}/payment-proof")]
-    public async Task<IActionResult> GetPaymentProof(string loanId, [FromQuery(Name = "t")] string? token)
+    public async Task<IActionResult> GetPaymentProof([FromRoute] string loanId, [FromQuery(Name = "t")] string? token)
     {
         if (!await AuthorizedAsync(loanId, token)) return NotFound(new { Message = "הקישור אינו תקף" });
         var proof = await _loanService.GetPaymentProofAsync(loanId);

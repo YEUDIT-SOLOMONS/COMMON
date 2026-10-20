@@ -1,22 +1,16 @@
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PhotoRental.Core.Interfaces;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Processing;
 
 namespace PhotoRental.API.Controllers;
 
-// תמונות הפריטים כקבצים רגילים: /img/{itemId}/thumb (תמונה קטנה לכרטיסים) או /img/{itemId}/{n} (בגודל מלא).
+// תמונות הפריטים כקבצים רגילים: /img/{itemId}/thumb (התמונה הראשית) או /img/{itemId}/{n}.
 // הקישור כולל טביעת תוכן (?v=), ולכן נשמר בקאש לשנה שלמה
 [ApiController]
 [Route("img")]
 [AllowAnonymous]
 public class ImagesController : ControllerBase
 {
-    private const int ThumbSize = 420;
-    private static readonly ConcurrentDictionary<string, byte[]> Thumbs = new();
     private readonly IItemRepository _items;
 
     public ImagesController(IItemRepository items)
@@ -25,7 +19,7 @@ public class ImagesController : ControllerBase
     }
 
     [HttpGet("{itemId}/{slot}")]
-    public async Task<IActionResult> Get(string itemId, string slot)
+    public async Task<IActionResult> Get([FromRoute] string itemId, [FromRoute] string slot)
     {
         var item = await _items.GetByIdAsync(itemId);
         if (item is null || item.DeletedAtUtc is not null || string.IsNullOrEmpty(item.ImageDataUrl))
@@ -38,29 +32,7 @@ public class ImagesController : ControllerBase
 
         Response.Headers.CacheControl = "public, max-age=31536000, s-maxage=31536000, immutable";
 
-        if (slot != "thumb")
-            return File(bytes, mime);
-
-        var key = $"{itemId}:{PhotoRental.Core.Helpers.ImageLinks.Version(dataUrl)}";
-        if (!Thumbs.TryGetValue(key, out var thumb))
-        {
-            try
-            {
-                using var image = Image.Load(bytes);
-                if (image.Width > ThumbSize || image.Height > ThumbSize)
-                    image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(ThumbSize, ThumbSize), Mode = ResizeMode.Max }));
-                using var output = new MemoryStream();
-                image.SaveAsJpeg(output, new JpegEncoder { Quality = 72 });
-                thumb = output.ToArray();
-            }
-            catch
-            {
-                return File(bytes, mime);
-            }
-            if (Thumbs.Count > 500) Thumbs.Clear();
-            Thumbs[key] = thumb;
-        }
-        return File(thumb, "image/jpeg");
+        return File(bytes, mime);
     }
 
     private static bool TryDecode(string dataUrl, out byte[] bytes, out string mime)

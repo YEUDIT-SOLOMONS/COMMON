@@ -1,12 +1,15 @@
-﻿namespace PhotoRental.Core.Interfaces;
+namespace PhotoRental.Core.Interfaces;
 
+using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
 using PhotoRental.Core.Enums;
 
 public interface IItemRepository
 {
     Task<IReadOnlyList<Item>> GetAllAsync();
-    Task<Item?> GetByIdAsync(string id);
+    Task<Item?> GetByIdAsync(string id, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<string, Item>> GetByIdsAsync(IEnumerable<string> ids, CancellationToken ct = default);
+    Task<(IReadOnlyList<Item> Items, int TotalCount)> GetPageAsync(ItemPageQueryDto query, CancellationToken ct = default);
     Task<IReadOnlyList<Item>> GetByCategoryIdAsync(string categoryId);
     Task<IReadOnlyList<Item>> GetByOwnerIdAsync(string ownerId);
     Task<Item> CreateAsync(Item item);

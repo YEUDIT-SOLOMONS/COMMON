@@ -18,15 +18,11 @@ public class PartyBridgeService : IPartyBridgeService
     private readonly ICallLogRepository _logs;
     private readonly TwilioOptions _twilio;
     private readonly IReminderCallService _calls;
-    private readonly IEmailService _email;
-    private readonly ClientOptions _client;
 
     public PartyBridgeService(
         ILoanRepository loans, IItemRepository items, IUserRepository users, ICallLogRepository logs, TwilioOptions twilio,
-        IReminderCallService calls, IEmailService email, ClientOptions client)
+        IReminderCallService calls)
     {
-        _email = email;
-        _client = client;
         _calls = calls;
         _loans = loans;
         _items = items;
@@ -97,8 +93,7 @@ public class PartyBridgeService : IPartyBridgeService
             $"שלום. מחברים אותך {who}. נא להמתין.",
             ToE164(counterpart.Phone),
             _twilio.FromPhoneNumber,
-            DoneUrl(log.Id),
-            WhisperUrl(log.Id));
+            DoneUrl(log.Id));
         var result = await _calls.CallWithTwimlAsync(caller.Phone, twiml);
         if (!result.Placed)
         {
@@ -239,66 +234,9 @@ public class PartyBridgeService : IPartyBridgeService
             await _logs.UpdateAsync(log);
         }
 
-        if (log is not null && dialStatus != "completed")
-        {
-            try { await SendMissedEmailAsync(log); } catch { }
-        }
-
         return dialStatus == "completed"
             ? CallTwiml.Empty()
             : CallTwiml.SayAndHangup($"השיחה לא נענתה. אפשר לנסות שוב מאוחר יותר. {ContactHint}");
-    }
-
-    private static bool CallerWasRenter(CallLog log) => log.Detail?.StartsWith("שוכרת", StringComparison.Ordinal) == true;
-
-    private static string CallerRole(CallLog log) => CallerWasRenter(log) ? "השוכרת" : "המשכירה";
-
-    public async Task<string> WhisperAsync(string logId)
-    {
-        var log = string.IsNullOrWhiteSpace(logId) ? null : await _logs.GetByIdAsync(logId);
-        if (log is null)
-            return CallTwiml.Whisper("שלום, זו שיחה מקומון. מחברים.");
-        return CallTwiml.Whisper($"שלום, זו שיחה מקומון. {CallerRole(log)} של {log.ItemName}, רוצה לדבר איתך. מחברים.");
-    }
-
-    // מי שלא ענתה לשיחה מתווכת מקבלת מייל עם כפתור שמחייג אליה מיד ומחבר אותה לצד השני (פעם אחת לחצי שעה)
-    private async Task SendMissedEmailAsync(CallLog log)
-    {
-        if (!_email.IsEnabled || log.Kind != "Bridge" || string.IsNullOrEmpty(log.ToUserId) || string.IsNullOrEmpty(log.LoanId))
-            return;
-        var since = DateTime.UtcNow.AddMinutes(-30);
-        var already = (await _logs.GetByLoanIdAsync(log.LoanId)).Any(l =>
-            l.Id != log.Id && l.Kind == "Bridge" && l.ToUserId == log.ToUserId && !string.IsNullOrEmpty(l.CallbackToken) && l.CreatedAtUtc > since);
-        if (already)
-            return;
-        var user = await _users.GetByIdAsync(log.ToUserId);
-        if (user is null || string.IsNullOrWhiteSpace(user.Email))
-            return;
-
-        log.CallbackToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        await _logs.UpdateAsync(log);
-
-        string H(string? text) => System.Net.WebUtility.HtmlEncode(text ?? string.Empty);
-        var role = CallerRole(log);
-        var link = $"{_client.BaseUrl.TrimEnd('/')}/call-back/{Uri.EscapeDataString(log.Id ?? string.Empty)}?t={log.CallbackToken}";
-        var html = "<div dir=\"rtl\" style=\"font-family:Arial,sans-serif\">" +
-                   $"<p>שלום {H(NameText.FirstName(user.Name))},</p>" +
-                   $"<p>{role} של <strong>{H(log.ItemName)}</strong> ניסתה להשיג אותך עכשיו בטלפון דרך common.</p>" +
-                   "<p>כדי לחזור אליה, לחצי על הכפתור: נתקשר אלייך מיד, וכשתעני נחבר אותך אליה. המספרים של שתיכן נשארים חסויים.</p>" +
-                   $"<p><a href=\"{H(link)}\" style=\"display:inline-block;background:#a8e29c;border:1px solid #000;border-radius:20px;padding:10px 20px;color:#000;text-decoration:none\"><strong>לחזרה אליה</strong></a></p>" +
-                   "<p>common</p></div>";
-        await _email.SendAsync(user.Email, user.Name, $"{role} של {log.ItemName} ניסתה להשיג אותך - common", html);
-    }
-
-    public async Task CallbackFromLinkAsync(string logId, string token)
-    {
-        var log = string.IsNullOrWhiteSpace(logId) ? null : await _logs.GetByIdAsync(logId);
-        if (log is null || log.Kind != "Bridge" || string.IsNullOrEmpty(log.CallbackToken) || string.IsNullOrEmpty(token)
-            || !System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-                System.Text.Encoding.UTF8.GetBytes(log.CallbackToken), System.Text.Encoding.UTF8.GetBytes(token))
-            || string.IsNullOrEmpty(log.ToUserId) || string.IsNullOrEmpty(log.LoanId))
-            throw new KeyNotFoundException("הקישור אינו תקף");
-        await StartCallbackAsync(log.ToUserId, log.LoanId);
     }
 
     private static string? CheckAllowed() =>
@@ -330,8 +268,7 @@ public class PartyBridgeService : IPartyBridgeService
             $"שיחתך מועברת {who}.",
             ToE164(c.Counterpart.Phone),
             string.IsNullOrWhiteSpace(_twilio.FromPhoneNumber) ? CommonNumber ?? string.Empty : _twilio.FromPhoneNumber,
-            DoneUrl(log.Id),
-            WhisperUrl(log.Id));
+            DoneUrl(log.Id));
     }
 
     private async Task<(User? Caller, List<Candidate> Candidates)> FindCandidatesAsync(string fromPhone)
@@ -369,8 +306,6 @@ public class PartyBridgeService : IPartyBridgeService
     }
 
     private string SelectUrl() => $"{_twilio.PublicBaseUrl.TrimEnd('/')}/api/calls/twilio/inbound/select";
-
-    private string WhisperUrl(string? logId) => $"{_twilio.PublicBaseUrl.TrimEnd('/')}/api/calls/twilio/inbound/whisper?logId={Uri.EscapeDataString(logId ?? string.Empty)}";
 
     private string DoneUrl(string? logId) => $"{_twilio.PublicBaseUrl.TrimEnd('/')}/api/calls/twilio/inbound/done?logId={Uri.EscapeDataString(logId ?? string.Empty)}";
 

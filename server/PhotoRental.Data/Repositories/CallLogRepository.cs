@@ -82,7 +82,6 @@ public class CallLogRepository : ICallLogRepository
             [nameof(CallLog.PlacedAtUtc)] = FirestoreJson.TimestampOrNullField(log.PlacedAtUtc),
             [nameof(CallLog.Detail)] = FirestoreJson.StringOrNullField(log.Detail),
             [nameof(CallLog.Message)] = FirestoreJson.StringOrNullField(log.Message),
-            [nameof(CallLog.CallbackToken)] = FirestoreJson.StringOrNullField(log.CallbackToken),
             [nameof(CallLog.TwilioSid)] = FirestoreJson.StringOrNullField(log.TwilioSid)
         };
     }
@@ -108,7 +107,6 @@ public class CallLogRepository : ICallLogRepository
             PlacedAtUtc = FirestoreJson.GetTimestampOrNull(fields, nameof(CallLog.PlacedAtUtc)),
             Detail = FirestoreJson.GetStringOrNull(fields, nameof(CallLog.Detail)),
             Message = FirestoreJson.GetStringOrNull(fields, nameof(CallLog.Message)),
-            CallbackToken = FirestoreJson.GetStringOrNull(fields, nameof(CallLog.CallbackToken)),
             TwilioSid = FirestoreJson.GetStringOrNull(fields, nameof(CallLog.TwilioSid))
         };
     }

@@ -1,4 +1,4 @@
-﻿namespace PhotoRental.Core.Interfaces;
+namespace PhotoRental.Core.Interfaces;
 
 using PhotoRental.Core.DTOs;
 using PhotoRental.Core.Entities;
@@ -35,7 +35,7 @@ public interface ILoanService
     Task<RenterPickupDto?> GetRenterPickupViewAsync(string loanId);
 
     // מהחלון "האם הפריט הוחזר?" במייל למשכירה: סימון שהוחזר (לא עושה כלום אם כבר הוחזר)
-    Task MarkReturnedFromLinkAsync(string loanId, string? returnedBy = null);
+    Task MarkReturnedFromLinkAsync(string loanId);
 
     // מהחלון "האם הפריט הוחזר?": סימון שעדיין לא הוחזר - שולח לשוכרת מייל ושיחה (כולל הודעה על קנס של יום נוסף)
     // ומעדכן את תיבת האתר. false אם כבר הוחזר או כבר דווח
@@ -48,7 +48,7 @@ public interface ILoanService
     // אימות הזמינות, כדי שהמחיר המוצג יהיה תמיד המחיר האמיתי שיגבה בפועל (ראו ShippingQuoteDto)
     Task<ShippingQuoteDto> GetShippingQuoteAsync(ShippingQuoteRequestDto request);
 
-    Task<LoanResponseDto> CreateAsync(LoanRequestDto request);
+    Task<LoanResponseDto> CreateAsync(LoanRequestDto request, CancellationToken ct = default);
 
     // מצב משלוח חי (זמן הגעה, שליח, מיקום) לשני כיווני ההשכרה
     Task<LoanShippingStatusDto> GetShippingStatusAsync(string loanId);
@@ -64,9 +64,9 @@ public interface ILoanService
 
     // פותח בבת אחת כמה עסקאות השכרה על כמה פריטים מאותו חבר קהילה (משכיר) - "הזמנה" אחת
     // המשתפת מועדים, אמצעי תשלום, ועלות משלוח בודדת (ולא כפולה לכל פריט) - ראו LoanBatchRequestDto.
-    Task<IReadOnlyList<LoanResponseDto>> CreateBatchAsync(LoanBatchRequestDto request);
+    Task<IReadOnlyList<LoanResponseDto>> CreateBatchAsync(LoanBatchRequestDto request, CancellationToken ct = default);
 
-    Task ReturnLoanAsync(string id, string? returnedBy = null);
+    Task ReturnLoanAsync(string id);
     Task UpdateStatusAsync(string id, string status);
 
     // מסמן תשלום ממתין (מזומן/העברה בנקאית) כשולם בפועל - לשימוש המשכיר, לאחר שקיבל את התשלום

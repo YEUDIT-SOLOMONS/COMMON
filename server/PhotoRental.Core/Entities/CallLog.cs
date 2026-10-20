@@ -37,7 +37,4 @@ public class CallLog
 
     // מזהה השיחה אצל Twilio
     public string? TwilioSid { get; set; }
-
-    // שיחה מתווכת שלא נענתה: טוקן לקישור "לחזרה אליה" שבמייל
-    public string? CallbackToken { get; set; }
 }
