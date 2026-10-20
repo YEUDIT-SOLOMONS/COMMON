@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+*.user
+PhotoRental.API/firebase-key.json
+PhotoRental.API/Logs/
+deploy/

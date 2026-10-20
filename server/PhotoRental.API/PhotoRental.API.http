@@ -1,0 +1,86 @@
+﻿@PhotoRental.API_HostAddress = https://localhost:7244
+
+### שליפת כל המשתמשים
+GET {{PhotoRental.API_HostAddress}}/api/users
+Accept: application/json
+
+###
+
+### יצירת משתמש חדש
+POST {{PhotoRental.API_HostAddress}}/api/users
+Content-Type: application/json
+
+{
+  "name": "ישראל ישראלי",
+  "email": "israel@example.com",
+  "phone": "0501234567",
+  "role": "Renter"
+}
+
+###
+
+### שליפת כל הקטגוריות
+GET {{PhotoRental.API_HostAddress}}/api/categories
+Accept: application/json
+
+###
+
+### יצירת קטגוריה חדשה
+POST {{PhotoRental.API_HostAddress}}/api/categories
+Content-Type: application/json
+
+{
+  "name": "מצלמות DSLR"
+}
+
+###
+
+### שליפת כל הציוד (ניתן לסנן לפי קטגוריה: ?categoryId=...)
+GET {{PhotoRental.API_HostAddress}}/api/items
+Accept: application/json
+
+###
+
+### הוספת ציוד חדש
+POST {{PhotoRental.API_HostAddress}}/api/items
+Content-Type: application/json
+
+{
+  "name": "Canon EOS R6",
+  "description": "מצלמת מירורלס פול פריים",
+  "dailyPrice": 120,
+  "serialNumber": "SN-12345",
+  "categoryId": "",
+  "ownerId": ""
+}
+
+###
+
+### שליפת כל עסקאות ההשכרה
+GET {{PhotoRental.API_HostAddress}}/api/loans
+Accept: application/json
+
+###
+
+### פתיחת עסקת השכרה חדשה
+POST {{PhotoRental.API_HostAddress}}/api/loans
+Content-Type: application/json
+
+{
+  "itemId": "",
+  "borrowerId": "",
+  "expectedReturnDate": "2026-09-10T00:00:00Z"
+}
+
+###
+
+### סימון השכרה כמוחזרת
+POST {{PhotoRental.API_HostAddress}}/api/loans/{{loanId}}/return
+
+###
+
+### עדכון סטטוס השכרה ידנית
+PUT {{PhotoRental.API_HostAddress}}/api/loans/{{loanId}}/status
+Content-Type: application/json
+
+"Overdue"

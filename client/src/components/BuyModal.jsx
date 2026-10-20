@@ -1,0 +1,600 @@
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { itemsApi, orderPayApi, salesApi, shippingPayApi } from '../api/endpoints.js'
+import { useAuth } from '../context/AuthContext.jsx'
+import { CategoryIcon } from './CategoryIcon.jsx'
+import { categoryTrailForItem, iconTextsForItem } from '../utils/categoryIcon.js'
+import { readProofFile } from '../utils/proof.js'
+import { MapPinIcon } from './icons.jsx'
+import { Modal } from './Modal.jsx'
+import { Loader } from './Loader.jsx'
+import { CityStreetFields } from './AddressFields.jsx'
+import { AskOwner } from './AskOwner.jsx'
+import { PhoneUpdateModal } from './PhoneUpdateModal.jsx'
+
+export const CONDITION_LABELS = { New: 'חדש בקופסה', LikeNew: 'כמו חדש - שומש פעמים בודדות', Used: 'משומש', Damaged: 'קצת פגום' }
+
+// חלון פריט יד 2: פרטים, שאלה למוכרת, איסוף/שליח ותשלום (מזומן, העברה בנקאית או אשראי) - כמו בהשכרה
+export function BuyModal({ item, categoryChains, onClose }) {
+  const { user, isAuthenticated } = useAuth()
+  const navigate = useNavigate()
+  const [detailsById, setDetailsById] = useState({})
+  const [otherItems, setOtherItems] = useState([])
+  const [selectedOtherIds, setSelectedOtherIds] = useState([])
+  const [showAllOthers, setShowAllOthers] = useState(false)
+  const [viewedItemId, setViewedItemId] = useState(null)
+  const [galleryIndex, setGalleryIndex] = useState(0)
+  const [method, setMethod] = useState('SelfPickup')
+  const [city, setCity] = useState('')
+  const [street, setStreet] = useState('')
+  const [addressValid, setAddressValid] = useState(false)
+  const [houseNumber, setHouseNumber] = useState('')
+  const [floor, setFloor] = useState('')
+  const [apartment, setApartment] = useState('')
+  const [fee, setFee] = useState(null)
+  const [quoting, setQuoting] = useState(false)
+  const [error, setError] = useState('')
+  const [paying, setPaying] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState(null)
+  const [orderPay, setOrderPay] = useState(null)
+  const [ownerPayout, setOwnerPayout] = useState(null)
+  const [payoutLoading, setPayoutLoading] = useState(false)
+  const [proof, setProof] = useState(null)
+  const [proofBusy, setProofBusy] = useState(false)
+  const [proofError, setProofError] = useState('')
+  const [phoneConfirmed, setPhoneConfirmed] = useState(false)
+  const [phoneEditOpen, setPhoneEditOpen] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [checkout, setCheckout] = useState(false)
+  const isOwnItem = user?.id && user.id === item.ownerId
+
+  const viewedItem = (viewedItemId && otherItems.find((other) => other.id === viewedItemId)) || item
+  const isViewingOther = viewedItem.id !== item.id
+  const details = detailsById[viewedItem.id]
+  const selectedOtherItems = otherItems.filter((other) => selectedOtherIds.includes(other.id))
+  const orderItems = [item, ...selectedOtherItems]
+  const isBatchOrder = selectedOtherItems.length > 0
+  const itemsPrice = orderItems.reduce((sum, o) => sum + o.salePrice, 0)
+
+  useEffect(() => {
+    if (detailsById[viewedItem.id]) return
+    const id = viewedItem.id
+    itemsApi
+      .getById(id)
+      .then((full) => full && setDetailsById((prev) => ({ ...prev, [id]: full })))
+      .catch(() => {})
+  }, [viewedItem.id, detailsById])
+
+  useEffect(() => {
+    if (!item.ownerId) return undefined
+    let cancelled = false
+    itemsApi
+      .getByOwner(item.ownerId)
+      .then((result) => {
+        if (!cancelled) setOtherItems((result ?? []).filter((other) => other.id !== item.id && other.forSale && !other.sold))
+      })
+      .catch(() => !cancelled && setOtherItems([]))
+    return () => {
+      cancelled = true
+    }
+  }, [item.id, item.ownerId])
+
+  function toggleOtherItem(other) {
+    setSelectedOtherIds((prev) => (prev.includes(other.id) ? prev.filter((id) => id !== other.id) : [...prev, other.id]))
+  }
+
+  function showItem(id) {
+    setViewedItemId(id === item.id ? null : id)
+    setGalleryIndex(0)
+  }
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    orderPayApi
+      .status()
+      .then(setOrderPay)
+      .catch(() => {})
+  }, [isAuthenticated])
+
+  // משלוח עם שליח - באשראי או בהעברה (ואז דמי המשלוח מכרטיס שמור)
+  useEffect(() => {
+    if (method === 'Delivery' && paymentMethod === 'Cash') setPaymentMethod(null)
+  }, [method, paymentMethod])
+
+  const [shipPay, setShipPay] = useState(null)
+  const [cardConsent, setCardConsent] = useState(false)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    shippingPayApi
+      .status()
+      .then(setShipPay)
+      .catch(() => {})
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    if (paymentMethod !== 'BankTransfer' || ownerPayout) return
+    setPayoutLoading(true)
+    itemsApi
+      .getOwnerPayout(item.id)
+      .then(setOwnerPayout)
+      .catch((err) => setError(err.message))
+      .finally(() => setPayoutLoading(false))
+  }, [paymentMethod, ownerPayout, item.id])
+
+  const address = { city, street, houseNumber, floor, apartment }
+  const addressComplete = addressValid && houseNumber.trim() && floor.trim() && apartment.trim()
+
+  useEffect(() => {
+    setFee(null)
+    if (method !== 'Delivery' || !addressComplete) return undefined
+    let cancelled = false
+    setQuoting(true)
+    setError('')
+    const t = setTimeout(() => {
+      salesApi
+        .quote(item.id, { city, street, houseNumber, floor, apartment })
+        .then((r) => !cancelled && setFee(r.fee))
+        .catch((err) => !cancelled && setError(err.message))
+        .finally(() => !cancelled && setQuoting(false))
+    }, 500)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [method, addressComplete, item.id, city, street, houseNumber, floor, apartment])
+
+  const gallery = details?.imageDataUrls?.length ? details.imageDataUrls : viewedItem.imageDataUrl ? [viewedItem.imageDataUrl] : []
+  const place = details?.neighborhood || details?.street
+  const deliveryFee = method === 'Delivery' ? fee : 0
+  const total = deliveryFee == null ? null : itemsPrice + deliveryFee
+  const shippingByCard = paymentMethod === 'BankTransfer' && method === 'Delivery' && Boolean(shipPay?.enabled) && deliveryFee > 0
+  const needsShippingCard = shippingByCard && !shipPay?.hasCard
+  const canSubmit =
+    total != null &&
+    termsAccepted &&
+    phoneConfirmed &&
+    (!needsShippingCard || cardConsent) &&
+    (paymentMethod === 'CreditCard' || paymentMethod === 'Cash' || (paymentMethod === 'BankTransfer' && ownerPayout?.isConfigured && proof))
+
+  async function handleProofChange(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setProofError('')
+    setProofBusy(true)
+    try {
+      setProof(await readProofFile(file))
+    } catch (err) {
+      setProof(null)
+      setProofError(err.message)
+    } finally {
+      setProofBusy(false)
+    }
+  }
+
+  function directDraft() {
+    return {
+      itemId: item.id,
+      extraItemIds: selectedOtherIds,
+      deliveryMethod: method,
+      deliveryAddress: method === 'Delivery' ? address : null,
+      paymentMethod,
+      ...(paymentMethod === 'BankTransfer' ? { paymentProofDataUrl: proof?.dataUrl, paymentProofFileName: proof?.fileName } : {}),
+    }
+  }
+
+  async function shippingCardFirst() {
+    setError('')
+    setPaying(true)
+    try {
+      const pending = { draft: { sale: directDraft() }, isBatch: false }
+      try {
+        sessionStorage.setItem('pr.shippingDraft', JSON.stringify(pending))
+      } catch {
+        throw new Error('לא ניתן להמשיך עם הקובץ שהועלה - נא להעלות אסמכתא קטנה יותר')
+      }
+      const r = await shippingPayApi.start(deliveryFee, true, pending)
+      window.location.href = r.redirectUrl
+    } catch (err) {
+      setError(err.message)
+      setPaying(false)
+    }
+  }
+
+  async function confirmDirect() {
+    setError('')
+    setPaying(true)
+    try {
+      const sale = await salesApi.create(directDraft())
+      navigate(`/purchase/${sale.id}?t=${sale.token}`)
+    } catch (err) {
+      setError(err.message)
+      setPaying(false)
+    }
+  }
+
+  async function pay() {
+    setError('')
+    setPaying(true)
+    try {
+      const pending = {
+        draft: { sale: { itemId: item.id, extraItemIds: selectedOtherIds, deliveryMethod: method, paymentMethod: 'CreditCard', deliveryAddress: method === 'Delivery' ? address : null } },
+        isBatch: false,
+      }
+      sessionStorage.setItem('pr.orderDraft', JSON.stringify(pending))
+      const r = await orderPayApi.start(total, false, pending)
+      window.location.href = r.redirectUrl
+    } catch (err) {
+      setError(err.message)
+      setPaying(false)
+    }
+  }
+
+  return (
+    <Modal title={viewedItem.name} eyebrow={categoryTrailForItem(viewedItem, categoryChains)} onClose={onClose}>
+      <div className="rent-modal">
+        {!checkout && (
+          <>
+        <div className="rent-modal-media">
+          {gallery.length > 0 ? (
+            <img key={galleryIndex} src={gallery[galleryIndex]} alt={viewedItem.name} className="rent-gallery-image" />
+          ) : (
+            <CategoryIcon className="item-details-icon" texts={iconTextsForItem(viewedItem, categoryChains)} />
+          )}
+          {gallery.length > 1 && (
+            <>
+              <button type="button" className="rent-gallery-arrow rent-gallery-prev" aria-label="התמונה הקודמת"
+                onClick={() => setGalleryIndex((galleryIndex + gallery.length - 1) % gallery.length)}>‹</button>
+              <button type="button" className="rent-gallery-arrow rent-gallery-next" aria-label="התמונה הבאה"
+                onClick={() => setGalleryIndex((galleryIndex + 1) % gallery.length)}>›</button>
+            </>
+          )}
+        </div>
+
+        {isViewingOther && isAuthenticated && !isOwnItem && (
+          <div className="viewing-bar">
+            <div className="viewing-bar-actions">
+              <button
+                type="button"
+                className={`btn btn-small ${selectedOtherIds.includes(viewedItem.id) ? 'btn-ghost' : 'btn-primary'}`}
+                onClick={() => toggleOtherItem(viewedItem)}
+              >
+                {selectedOtherIds.includes(viewedItem.id) ? 'הסרה מההזמנה' : 'הוספה להזמנה'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-small" onClick={() => showItem(item.id)}>
+                חזרה ל{item.name}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {viewedItem.city && (
+          <span className="item-card-city rent-modal-city">
+            <MapPinIcon className="item-card-city-icon" />
+            {place ? `${place}, ${viewedItem.city}` : viewedItem.city}
+          </span>
+        )}
+
+        <p className="sale-condition">מצב: {CONDITION_LABELS[viewedItem.saleCondition] ?? 'משומש'}</p>
+        <p className="item-details-desc">{viewedItem.description}</p>
+
+          </>
+        )}
+
+        <div className="item-price-big">
+          <span className="price-tag">₪{viewedItem.salePrice}</span>
+          <span className="item-price-unit"> · למכירה</span>
+        </div>
+
+        {item.sold ? (
+          <p className="state-message">הפריט נמכר.</p>
+        ) : isOwnItem ? (
+          <p className="field-hint">זה הפריט שלך למכירה.</p>
+        ) : !isAuthenticated ? (
+          <>
+            <p className="field-hint">
+              כדי לקנות צריך <Link to="/login">להתחבר</Link>.
+            </p>
+            <AskOwner key={item.id} item={item} />
+          </>
+        ) : (
+          !checkout ? (
+            <>
+              <AskOwner key={viewedItem.id} item={viewedItem} />
+              <button
+                type="button"
+                className="btn btn-primary sale-buy-btn"
+                onClick={() => {
+                  showItem(item.id)
+                  setCheckout(true)
+                }}
+              >
+                אני רוצה לקנות
+              </button>
+            </>
+          ) : (
+          <>
+            <button type="button" className="link-button sale-back" onClick={() => setCheckout(false)}>
+              → חזרה לפרטי הפריט
+            </button>
+            <ol className="rent-steps" aria-label="שלבי הרכישה">
+              {['קבלת הפריט', 'תשלום'].map((label, i) => (
+                <li key={label} className={i === 0 ? (paymentMethod ? 'is-done' : 'is-current') : paymentMethod ? 'is-current' : ''}>
+                  <span className="rent-step-num">{i + 1}</span>
+                  {label}
+                </li>
+              ))}
+            </ol>
+
+            <section className="rent-step" aria-label="קבלת הפריט">
+            <h3 className="rent-step-title">1. קבלת הפריט</h3>
+            <fieldset className="delivery-choice-block">
+              <legend>אופן קבלת הפריט</legend>
+              <div className="delivery-choice">
+                <label>
+                  <input type="radio" name="saleMethod" checked={method === 'SelfPickup'} onChange={() => setMethod('SelfPickup')} />
+                  איסוף עצמי
+                </label>
+                <label>
+                  <input type="radio" name="saleMethod" checked={method === 'Delivery'} onChange={() => setMethod('Delivery')} />
+                  משלוח{fee != null ? ` (₪${fee})` : ''}
+                </label>
+              </div>
+            </fieldset>
+
+            {method === 'SelfPickup' && <p className="field-hint sale-pickup-note">הכתובת המדויקת תיחשף לך מיד לאחר אישור הקנייה</p>}
+
+            {method === 'Delivery' && (
+              <div className="courier-fee-line" role="status">
+                <strong>תוספת תשלום לשליח</strong>
+                {fee != null ? <span>משלוח: ₪{fee}</span> : <span className={error && !quoting ? 'form-error' : undefined}>{quoting ? 'מחשבים את המחיר...' : error || 'הסכום יופיע מיד אחרי מילוי הכתובת'}</span>}
+              </div>
+            )}
+
+            {method === 'Delivery' && (
+              <fieldset className="delivery-address-fields">
+                <legend>כתובת למשלוח</legend>
+
+                <div className="rent-dates-row">
+                  <CityStreetFields
+                    idPrefix="saleDelivery"
+                    city={city}
+                    street={street}
+                    onCityChange={setCity}
+                    onStreetChange={setStreet}
+                    onValidChange={setAddressValid}
+                  />
+                </div>
+
+                <div className="rent-dates-row">
+                  <div>
+                    <label htmlFor="saleHouse">מספר בית</label>
+                    <input id="saleHouse" type="text" value={houseNumber} onChange={(e) => setHouseNumber(e.target.value)} required />
+                  </div>
+                  <div>
+                    <label htmlFor="saleFloor">קומה</label>
+                    <input id="saleFloor" type="text" value={floor} onChange={(e) => setFloor(e.target.value)} required />
+                  </div>
+                </div>
+
+                <div className="rent-dates-row">
+                  <div>
+                    <label htmlFor="saleApartment">מספר דירה / שם משפחה</label>
+                    <input id="saleApartment" type="text" value={apartment} onChange={(e) => setApartment(e.target.value)} required />
+                  </div>
+                </div>
+
+                {addressValid && houseNumber.trim() && !addressComplete && (
+                  <p className="field-hint">יש להשלים קומה ומספר דירה או שם משפחה, כדי שהשליח ימצא את הדלת.</p>
+                )}
+                {addressComplete && (
+                  <p className="field-hint">{quoting ? 'מחשבים מחיר משלוח אמיתי לפי הכתובת...' : fee != null ? `משלוח: ₪${fee}` : null}</p>
+                )}
+              </fieldset>
+            )}
+
+            </section>
+
+            <section className="rent-step" aria-label="תשלום">
+            <h3 className="rent-step-title">2. תשלום</h3>
+            <p className="sale-total">
+              סה"כ לתשלום: <strong>{total == null ? '—' : `₪${total.toFixed(2)}`}</strong>
+              {method === 'Delivery' && fee != null && <span className="item-price-hourly-note"> (כולל ₪{fee} משלוח)</span>}
+            </p>
+
+            <fieldset className="delivery-choice-block">
+              <legend>אמצעי תשלום</legend>
+              <div className="delivery-choice payment-choice">
+                {method === 'SelfPickup' && (
+                  <label>
+                    <input type="radio" name="salePayment" checked={paymentMethod === 'Cash'} onChange={() => setPaymentMethod('Cash')} />
+                    מזומן
+                  </label>
+                )}
+                <label>
+                  <input type="radio" name="salePayment" checked={paymentMethod === 'BankTransfer'} onChange={() => setPaymentMethod('BankTransfer')} />
+                  העברה בנקאית
+                </label>
+                {orderPay?.enabled && (
+                  <label>
+                    <input type="radio" name="salePayment" checked={paymentMethod === 'CreditCard'} onChange={() => setPaymentMethod('CreditCard')} />
+                    כרטיס אשראי
+                  </label>
+                )}
+              </div>
+            </fieldset>
+
+            {paymentMethod === 'BankTransfer' && (
+              <div className="bank-transfer-panel payment-space">
+                <h3 className="payment-space-title">תשלום בהעברה בנקאית</h3>
+                {payoutLoading && <Loader label="טוען פרטי חשבון" compact />}
+                {!payoutLoading && ownerPayout && (ownerPayout.isConfigured ? (
+                  <>
+                    <p className="payment-space-amount">
+                      לתשלום: <strong>₪{itemsPrice.toFixed(2)}</strong>
+                    </p>
+                    <dl className="item-meta payment-space-details">
+                      <div>
+                        <dt>בעל/ת החשבון</dt>
+                        <dd>{ownerPayout.accountHolderName}</dd>
+                      </div>
+                      <div>
+                        <dt>בנק</dt>
+                        <dd>{ownerPayout.bankName} · סניף {ownerPayout.branchNumber}</dd>
+                      </div>
+                      <div>
+                        <dt>מספר חשבון</dt>
+                        <dd>{ownerPayout.accountNumber}</dd>
+                      </div>
+                    </dl>
+                    <div className="payment-proof">
+                      <label htmlFor="saleProof">אחרי ההעברה - העלי אסמכתא (צילום מסך, PDF או קובץ אקסל)</label>
+                      <input id="saleProof" type="file" accept="image/*,application/pdf,.xlsx,.xls,.csv" onChange={handleProofChange} disabled={proofBusy} />
+                      {proofBusy && <p className="field-hint">מעלה את האסמכתא...</p>}
+                      {proofError && <p className="form-error">{proofError}</p>}
+                      {proof && (
+                        <p className="payment-proof-ok">
+                          ✓ האסמכתא הועלתה: <bdi>{proof.fileName}</bdi>
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="state-message state-error">המוכרת טרם הגדירה פרטי חשבון לקבלת תשלומים - יש לבחור אמצעי תשלום אחר.</p>
+                ))}
+              </div>
+            )}
+
+            {shippingByCard && (
+              <div className="shipping-card-box">
+                {shipPay.hasCard ? (
+                  <p>דמי המשלוח (₪{deliveryFee}) ייגבו מכרטיס האשראי השמור שלך. אין צורך להזין אותו שוב.</p>
+                ) : (
+                  <>
+                    <p>
+                      דמי המשלוח (₪{deliveryFee}) משולמים בכרטיס אשראי. בפעם הראשונה תועברי לדף תשלום מאובטח, ובפעמים הבאות
+                      הכרטיס יחויב אוטומטית, בהתאם ל
+                      <Link to="/terms" target="_blank" rel="noopener noreferrer" className="call-party-link">
+                        תנאי השימוש
+                      </Link>
+                      . פרטי הכרטיס אינם נשמרים באתר אלא מאובטחים אצל חברת הסליקה סאמיט.
+                    </p>
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={cardConsent} onChange={(e) => setCardConsent(e.target.checked)} />
+                      <span>אני מאשרת לשמור את הכרטיס לחיוב דמי משלוח בהזמנות הבאות</span>
+                    </label>
+                  </>
+                )}
+              </div>
+            )}
+
+            <label className="checkbox-row">
+              <input type="checkbox" checked={phoneConfirmed} onChange={(e) => setPhoneConfirmed(e.target.checked)} />
+              <span>
+                אני מאשרת שהמספר <bdi dir="ltr">{user?.phone}</bdi> הוא שלי ומתפקד{' '}
+                <small className="payment-status-note">(לצורך קבלת עדכונים)</small>{' '}
+                <button
+                  type="button"
+                  className="call-party-link link-button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setPhoneEditOpen(true)
+                  }}
+                >
+                  עדכון המספר
+                </button>
+              </span>
+            </label>
+            {phoneEditOpen && <PhoneUpdateModal onClose={() => setPhoneEditOpen(false)} onSaved={() => setPhoneConfirmed(true)} />}
+
+            <label className="checkbox-row">
+              <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} />
+              <span>
+                קראתי ואני מאשרת את{' '}
+                <Link to="/terms" target="_blank" rel="noopener noreferrer" className="call-party-link">
+                  תנאי השימוש
+                </Link>
+              </span>
+            </label>
+
+            {error && <p className="form-error">{error}</p>}
+            {paymentMethod === 'CreditCard' ? (
+              <button type="button" className="btn btn-primary" disabled={paying || !canSubmit} onClick={pay}>
+                {paying ? 'מעבירה לתשלום...' : 'מעבר לתשלום מאובטח באשראי'}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary" disabled={paying || !canSubmit} onClick={needsShippingCard ? shippingCardFirst : confirmDirect}>
+                {paying
+                  ? 'שולח...'
+                  : needsShippingCard
+                    ? 'מעבר לתשלום דמי המשלוח'
+                    : paymentMethod === 'BankTransfer'
+                      ? 'שליחת האסמכתא ואישור הרכישה'
+                      : 'אישור הרכישה'}
+              </button>
+            )}
+            </section>
+          </>
+          )
+        )}
+
+        {otherItems.length > 0 && !isOwnItem && isAuthenticated && !item.sold && (
+          <div className="other-owner-items">
+            <h3>עוד פריטים מהמוכרת הזו</h3>
+            <div className="other-owner-items-grid">
+              {otherItems.slice(0, showAllOthers ? undefined : 4).map((other) => {
+                const isSelected = selectedOtherIds.includes(other.id)
+                const view = () => {
+                  setCheckout(false)
+                  showItem(other.id)
+                }
+                return (
+                  <div
+                    key={other.id}
+                    className={`other-owner-item${isSelected ? ' selected' : ''}${viewedItem.id === other.id ? ' viewing' : ''}`}
+                  >
+                    {isSelected && <span className="other-owner-item-check">✓</span>}
+                    <button type="button" className="other-owner-item-view" onClick={view} aria-label={`הצגת ${other.name}`}>
+                      <span className="other-owner-item-media">
+                        {other.imageDataUrl ? (
+                          <img src={other.imageDataUrl} alt={other.name} loading="lazy" decoding="async" />
+                        ) : (
+                          <CategoryIcon texts={iconTextsForItem(other, categoryChains)} />
+                        )}
+                      </span>
+                      <span className="other-owner-item-name">{other.name}</span>
+                      <span className="other-owner-item-price">₪{other.salePrice}</span>
+                    </button>
+                    <div className="other-owner-item-actions">
+                      <button type="button" className="other-owner-item-show" onClick={view}>
+                        הצגה
+                      </button>
+                      <button
+                        type="button"
+                        className="other-owner-item-toggle"
+                        onClick={() => toggleOtherItem(other)}
+                        aria-pressed={isSelected}
+                      >
+                        {isSelected ? 'בהזמנה ✓' : '+ צירוף'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {!showAllOthers && otherItems.length > 4 && (
+              <button type="button" className="link-button" onClick={() => setShowAllOthers(true)}>
+                הצגת כל {otherItems.length} הפריטים שלה
+              </button>
+            )}
+            {isBatchOrder && (
+              <p className="other-owner-items-total">
+                נבחרו {orderItems.length} פריטים מהמוכרת הזו - ייקנו יחד בהזמנה אחת עם עלות משלוח בודדת.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}

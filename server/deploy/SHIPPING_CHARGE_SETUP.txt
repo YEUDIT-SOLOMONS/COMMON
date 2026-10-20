@@ -1,0 +1,15 @@
+Charging shipping fees to a saved card (via Summit)
+
+Default: OFF. Shipping fees are recorded and shown, but nothing is charged.
+
+To turn on, after Summit confirms the terminal supports charging a saved card:
+  gcloud run services update photorental-api --region me-west1 --update-env-vars Shipping__ChargeEnabled=true
+
+To turn off again:
+  gcloud run services update photorental-api --region me-west1 --update-env-vars Shipping__ChargeEnabled=false
+
+When ON:
+- First time a renter has a shipping fee: she pays on Summit's secure page (card is saved), then the order is created.
+- Next times: the saved card is charged automatically at order time (the shipment is booked first and cancelled if the charge fails).
+- If the order is paid by credit card, the shipping fee is already part of that payment.
+- Cancelling a paid courier return sends an email to common@onyxapp.co.il asking for a manual refund.

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>da1e2bfa-7ef4-43c8-b9fe-2cc46933b0dc</UserSecretsId>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Google.Apis.Auth" Version="1.76.0" />
+		<PackageReference Include="Google.Cloud.Firestore" Version="4.4.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.19" />
+		<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\PhotoRental.Core\PhotoRental.Core.csproj" />
+		<ProjectReference Include="..\PhotoRental.Service\PhotoRental.Service.csproj" />
+		<ProjectReference Include="..\PhotoRental.Data\PhotoRental.Data.csproj" />
+	</ItemGroup>
+
+</Project>

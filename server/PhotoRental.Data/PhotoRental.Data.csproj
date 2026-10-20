@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhotoRental.Core\PhotoRental.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Google.Apis.Auth: משמש לאימות מול Google (GoogleCredential) עבור בקשות ה-REST ל-Firestore -->
+    <!-- הוחלף מ-Google.Cloud.Firestore (SDK מבוסס gRPC/HTTP2) ל-Google.Apis.Auth בלבד (REST/HTTP1.1 בלבד) -->
+    <!-- ב-FirebaseDbContext, כדי לעקוף סביבות שחוסמות משא ומתן HTTP/2 -->
+    <PackageReference Include="Google.Apis.Auth" Version="1.76.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
